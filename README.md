@@ -3,7 +3,7 @@
 **Keep pace with the prerequisites your class assumes.**
 Throughline reads an SF State syllabus and the University Bulletin, maps the earlier-course knowledge each week relies on, checks a student in a few adaptive questions, and schedules what to review before the class that needs it.
 
-**SF Hacks × GDG AI Hackathon 2026 · Build for SFSU track**
+**SF Hacks × GDG AI Hackathon 2026 · Build for SFSU track · GDG Build with AI for Social Good track**
 
 | | |
 |---|---|
@@ -91,8 +91,8 @@ One Cloud Run service serves both the React app and the FastAPI backend. Course 
 ```mermaid
 flowchart TD
     U["Student or instructor<br/>phone or laptop"] --> FE["React + TypeScript app<br/>Vite"]
-    FE -- "sign-in" --> AUTH["Firebase Authentication<br/>anonymous for students,<br/>Google to add a course"]
-    FE -- "/api + Firebase ID token" --> API["FastAPI<br/>Cloud Run"]
+    FE -. "sign-in, when enabled" .-> AUTH["Firebase Authentication<br/>anonymous for students,<br/>Google to add a course<br/>(off in the live demo)"]
+    FE -- "/api" --> API["FastAPI<br/>Cloud Run"]
 
     GH["GitHub Actions<br/>CI, then Deploy"] -- "Workload Identity<br/>Federation" --> AR["Artifact Registry<br/>container image"]
     AR -- "deploy, smoke test,<br/>roll back on failure" --> API
@@ -117,7 +117,7 @@ flowchart TD
 | **Cloud Run** | Serves the app and API; startup and liveness probes |
 | **Firestore** | Courses, maps and answers, one partition per course |
 | **Cloud Tasks** | Durable, retried course builds with OIDC-signed callbacks |
-| **Firebase Authentication** | Anonymous sign-in for students; Google sign-in to add a course |
+| **Firebase Authentication** | Built in: anonymous sign-in for students, Google sign-in to add a course. The live demo runs without sign-in, so judges can try it with no account |
 | **Secret Manager · Artifact Registry · Cloud Build** | Gemini key; container images |
 | **Workload Identity Federation** | GitHub Actions deploys with no stored keys; failed smoke tests roll back automatically |
 | **Cloud Logging · Error Reporting · Monitoring** | Structured logs with request ids, grouped errors, uptime alert |
@@ -133,7 +133,7 @@ We scored the full pipeline on four real SF State syllabi against hand-written l
 
 - **Recall is high:** CSC 411 catches the chain rule and matrix multiplication its backpropagation weeks need, although the syllabus says no calculus is required.
 - **The harness found our worst bug.** The first mapping prompt told Gemini to skip topics the course teaches, so it also dropped the math under them (recall 0.42). Rewriting the prompt raised recall to 0.92.
-- The labels are drafts written by the team; Gemini's output varies a little between runs (F1 0.82–0.84 over two runs).
+- The labels are drafts I wrote; Gemini's output varies a little between runs (F1 0.82–0.84 over two runs).
 
 ## Responsible AI
 
@@ -186,8 +186,8 @@ deploy/                one-time Google Cloud setup and monitoring
 .github/workflows/     CI and deploy to Cloud Run
 ```
 
-## Team
+## Author
 
-Built for SF Hacks 2026 by [@shokhabbos-mukhammatov](https://github.com/shokhabbos-mukhammatov) and team.
+Built solo for the SF Hacks × GDG AI Hackathon 2026 by [@shokhabbos-mukhammatov](https://github.com/shokhabbos-mukhammatov).
 
 *Student project. Not affiliated with or endorsed by SF State.*
