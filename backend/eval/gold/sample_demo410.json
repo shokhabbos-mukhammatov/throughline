@@ -1,0 +1,20 @@
+{
+  "code": "DEMO 410",
+  "file": "@sample",
+  "timeline_kind": "dated_weeks",
+  "required": [
+    {"name": "Python Fundamentals", "week": 1},
+    {"name": "Descriptive Statistics", "week": 2, "coverage": "listed"},
+    {"name": "Simple Linear Regression", "aliases": ["linear regression", "least squares regression"], "week": 3, "coverage": "listed"},
+    {"name": "Multiple Linear Regression", "week": 4},
+    {"name": "Derivatives and the Chain Rule", "aliases": ["derivatives", "chain rule", "gradients"], "week": 5, "coverage": "missing"},
+    {"name": "Logarithms and Exponentials", "aliases": ["logarithms", "log odds"], "week": 6},
+    {"name": "Basic Probability", "aliases": ["probability", "conditional probability"], "week": 6, "coverage": "listed"},
+    {"name": "Vectors and the Dot Product", "aliases": ["vectors", "dot product"], "week": 8},
+    {"name": "Matrix Multiplication", "aliases": ["matrices", "linear algebra"], "week": 9, "coverage": "missing"},
+    {"name": "Version Control with Git", "aliases": ["git"], "week": 12},
+    {"name": "Relational Databases and SQL", "aliases": ["sql", "databases"], "week": 13}
+  ],
+  "acceptable": ["Loops", "Functions"],
+  "taught_here": ["Gradient Descent", "Backpropagation", "Naive Bayes", "Logistic Regression", "Cross-Validation"]
+}

@@ -1,0 +1,21 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+.data/
+backend/.data/
+node_modules/
+frontend/dist/
+.env
+.env.*
+!.env.example
+.pytest_cache/
+.DS_Store
+*.tsbuildinfo
+
+# Real course syllabi: course materials, never committed
+private/
+
+# Emulator logs
+*-debug.log
+.impeccable/

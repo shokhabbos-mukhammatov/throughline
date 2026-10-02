@@ -1,0 +1,20 @@
+# Files gcloud must not upload to Cloud Build (deploy.sh uses `gcloud run deploy --source .`).
+.gcloudignore
+.git
+.gitignore
+# Real course syllabi and evaluation results: course materials, never leave the laptop
+private/
+**/eval-results-*.json
+# Secrets and local state
+.env
+.env.*
+!.env.example
+**/.data/
+# Dependencies and build output (rebuilt inside the image)
+**/node_modules/
+**/.venv/
+**/venv/
+**/__pycache__/
+**/.pytest_cache/
+frontend/dist/
+*.tsbuildinfo

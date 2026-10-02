@@ -1,0 +1,14 @@
+{
+  "code": "CSC 648",
+  "file": "csc648.pdf",
+  "timeline_kind": "dated_weeks",
+  "required": [
+    {"name": "Object-Oriented Programming", "aliases": ["object oriented design", "classes and objects", "software design principles"], "week": 2, "coverage": "likely"},
+    {"name": "Relational Databases and SQL", "aliases": ["sql", "database fundamentals", "relational databases"], "week": 6, "coverage": "unknown"},
+    {"name": "Web Application Development", "aliases": ["client server architecture", "http", "full stack web development", "front end and back end", "web development"], "week": 7, "coverage": "likely"}
+  ],
+  "acceptable": ["Version Control with Git", "Unit Testing", "REST APIs", "Data Structures", "Programming Fundamentals", "JavaScript", "HTML and CSS",
+                 "Debugging", "Command Line", "Software Testing"],
+  "taught_here": ["Agile", "Scrum", "Extreme Programming", "Use Cases", "Requirements Gathering", "Containerization", "Test Driven Development",
+                  "User Centered Design", "Usability Testing", "Continuous Integration"]
+}

@@ -1,0 +1,14 @@
+{
+  "code": "MATH 324",
+  "file": "math324.pdf",
+  "timeline_kind": "estimated",
+  "required": [
+    {"name": "Programming Fundamentals", "aliases": ["programming experience", "computer programming", "r programming", "programming"], "week": 1, "coverage": "missing"},
+    {"name": "Integration", "aliases": ["definite integrals", "integration and area under a curve", "integration techniques", "integrals"], "week": 5, "coverage": "listed"},
+    {"name": "Multiple Integrals", "aliases": ["double integrals", "multivariable integration"], "week": 7, "coverage": "missing"}
+  ],
+  "acceptable": ["Infinite Series", "Geometric Series", "Derivatives", "Limits", "Set Notation", "Summation Notation", "Exponential Functions",
+                 "Sequences and Series", "Taylor Series"],
+  "taught_here": ["Probability", "Random Variables", "Discrete Distributions", "Continuous Distributions", "Point Estimation",
+                  "Confidence Intervals", "Hypothesis Testing", "Descriptive Statistics", "Joint Distributions"]
+}

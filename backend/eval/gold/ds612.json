@@ -1,0 +1,13 @@
+{
+  "code": "DS 612",
+  "file": "ds612.docx",
+  "timeline_kind": "assessments",
+  "required": [
+    {"name": "Simple Linear Regression", "aliases": ["linear regression", "least squares regression", "regression analysis"], "week": 4, "coverage": "listed"},
+    {"name": "Descriptive Statistics", "aliases": ["statistics refresher", "mean and standard deviation", "summary statistics"], "week": 4, "coverage": "likely"}
+  ],
+  "acceptable": ["Hypothesis Testing", "Statistical Inference", "Basic Probability", "Probability Distributions", "Multiple Linear Regression",
+                 "Correlation", "Logarithms and Exponentials", "Normal Distribution", "Sampling Distributions", "Confidence Intervals"],
+  "taught_here": ["Python Fundamentals", "Pandas", "K-Nearest Neighbors", "Decision Trees", "Cross-Validation", "Logistic Regression",
+                  "Ridge and Lasso Regression", "Confusion Matrix", "Naive Bayes", "Neural Networks", "Feature Engineering"]
+}

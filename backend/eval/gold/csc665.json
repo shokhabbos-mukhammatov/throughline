@@ -1,0 +1,15 @@
+{
+  "code": "CSC 665",
+  "file": "csc665.pdf",
+  "timeline_kind": "weeks",
+  "required": [
+    {"name": "Python Fundamentals", "aliases": ["python programming", "python"], "week": 1},
+    {"name": "Graph Traversal", "aliases": ["breadth first search", "depth first search", "graph search", "bfs and dfs", "graphs"], "week": 2, "coverage": "likely"},
+    {"name": "Derivatives and the Chain Rule", "aliases": ["derivatives", "gradients", "calculus", "partial derivatives"], "week": 12, "coverage": "missing"},
+    {"name": "Matrix Multiplication", "aliases": ["linear algebra", "matrices", "vectors and matrices"], "week": 12, "coverage": "missing"}
+  ],
+  "acceptable": ["Recursion", "Big-O Notation", "Basic Probability", "Propositional Logic", "Vectors and the Dot Product", "Data Structures",
+                 "Trees", "Logarithms and Exponentials", "Sets and Functions", "Discrete Mathematics"],
+  "taught_here": ["Uninformed Search", "Heuristic Search", "Adversarial Search", "Bayesian Networks", "Probability Theory", "Linear Regression",
+                  "Decision Trees", "Reinforcement Learning", "Deep Learning", "Logic"]
+}

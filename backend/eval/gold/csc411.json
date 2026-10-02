@@ -1,0 +1,15 @@
+{
+  "code": "CSC 411",
+  "file": "csc411.txt",
+  "timeline_kind": "weeks",
+  "required": [
+    {"name": "Python Fundamentals", "aliases": ["python", "python programming"], "week": 1},
+    {"name": "Vectors and the Dot Product", "aliases": ["vectors", "dot product"], "week": 1, "coverage": "missing"},
+    {"name": "Matrix Multiplication", "aliases": ["linear algebra", "matrices", "matrix operations"], "week": 1, "coverage": "missing"},
+    {"name": "Derivatives and the Chain Rule", "aliases": ["derivatives", "chain rule", "calculus", "partial derivatives"], "week": 2, "coverage": "missing"}
+  ],
+  "acceptable": ["Logarithms and Exponentials", "Basic Probability", "Descriptive Statistics", "Functions", "Data Structures", "Classes and Objects",
+                 "Exponential Function", "Summation Notation"],
+  "taught_here": ["Backpropagation", "Gradient Descent", "Loss Functions", "Embeddings", "Attention", "Transformers", "Overfitting",
+                  "Multilayer Perceptron", "Softmax", "Tensors"]
+}

@@ -1,0 +1,117 @@
+name: Deploy
+
+# Every push to main deploys; "Run workflow" deploys any branch by hand.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write  # lets GitHub prove its identity to Google Cloud (Workload Identity Federation, no stored keys)
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+env:
+  PROJECT: ${{ vars.GCP_PROJECT_ID }}
+  PROJECT_NUMBER: ${{ vars.GCP_PROJECT_NUMBER }}
+  REGION: ${{ vars.GCP_REGION || 'us-central1' }}
+  SERVICE: throughline
+  IMAGE: ${{ vars.GCP_REGION || 'us-central1' }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/throughline/throughline:${{ github.sha }}
+
+jobs:
+  test:
+    uses: ./.github/workflows/ci.yml
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: ${{ steps.smoke.outputs.url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SA }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Build and push the image
+        run: |
+          gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
+          docker build -t "${IMAGE}" .
+          docker push "${IMAGE}"
+
+      - name: Deploy to Cloud Run
+        id: deploy
+        run: |
+          URL="https://${SERVICE}-${PROJECT_NUMBER}.${REGION}.run.app"
+          PREVIOUS="$(gcloud run services describe "${SERVICE}" --region "${REGION}" --project "${PROJECT}" \
+                      --format='value(status.traffic[0].revisionName)' 2>/dev/null || true)"
+          echo "previous=${PREVIOUS}" >> "$GITHUB_OUTPUT"
+
+          ENV="STORE=firestore,GOOGLE_CLOUD_PROJECT=${PROJECT},LOG_FORMAT=json,BULLETIN_LIVE=1"
+          ENV="${ENV},BUILD_QUEUE=cloudtasks,PUBLIC_URL=${URL},TASKS_LOCATION=${REGION},TASKS_QUEUE=course-builds"
+          ENV="${ENV},TASKS_INVOKER_SA=throughline-tasks@${PROJECT}.iam.gserviceaccount.com"
+
+          # Sign-in: Firebase once its web config is set as repository variables, otherwise anonymous demo ids.
+          if [[ -n "${{ vars.FIREBASE_API_KEY }}" ]]; then
+            ENV="${ENV},AUTH_MODE=firebase,FIREBASE_API_KEY=${{ vars.FIREBASE_API_KEY }},FIREBASE_APP_ID=${{ vars.FIREBASE_APP_ID }}"
+            ENV="${ENV},FIREBASE_AUTH_DOMAIN=${PROJECT}.firebaseapp.com"
+          else
+            ENV="${ENV},AUTH_MODE=demo"
+          fi
+          if [[ -n "${{ vars.ALLOWED_EMAIL_DOMAINS }}" ]]; then
+            ENV="${ENV},ALLOWED_EMAIL_DOMAINS=${{ vars.ALLOWED_EMAIL_DOMAINS }}"
+          fi
+
+          # Gemini: an API key from Secret Manager when one is stored, otherwise Vertex AI as the runtime account.
+          SECRETS=()
+          if gcloud secrets describe gemini-api-key --project "${PROJECT}" >/dev/null 2>&1; then
+            SECRETS=(--set-secrets "GEMINI_API_KEY=gemini-api-key:latest")
+          else
+            ENV="${ENV},GOOGLE_GENAI_USE_VERTEXAI=true,GOOGLE_CLOUD_LOCATION=global"
+          fi
+
+          # One always-on instance: no cold starts, and per-course locks and rate limits stay consistent.
+          gcloud run deploy "${SERVICE}" --image "${IMAGE}" --region "${REGION}" --project "${PROJECT}" \
+            --service-account "throughline-run@${PROJECT}.iam.gserviceaccount.com" \
+            --allow-unauthenticated --execution-environment gen2 \
+            --cpu 1 --memory 1Gi --no-cpu-throttling --cpu-boost \
+            --min-instances 1 --max-instances 1 --concurrency 60 --timeout 900 \
+            --startup-probe "httpGet.path=/api/health,httpGet.port=8080,periodSeconds=3,timeoutSeconds=2,failureThreshold=20" \
+            --liveness-probe "httpGet.path=/api/health,httpGet.port=8080,periodSeconds=30,timeoutSeconds=5,failureThreshold=3" \
+            --set-env-vars "${ENV}" "${SECRETS[@]}" \
+            --labels "app=throughline,commit=${GITHUB_SHA::7}" --quiet
+          echo "url=${URL}" >> "$GITHUB_OUTPUT"
+
+      - name: Smoke test (rolls back on failure)
+        id: smoke
+        env:
+          URL: ${{ steps.deploy.outputs.url }}
+          PREVIOUS: ${{ steps.deploy.outputs.previous }}
+        run: |
+          echo "url=${URL}" >> "$GITHUB_OUTPUT"
+          ok=1
+          for path in /api/health /api/ready /api/config /; do
+            code="$(curl -s -o /tmp/body -w '%{http_code}' --max-time 20 "${URL}${path}")"
+            echo "${path} -> ${code}"
+            [[ "${code}" == "200" ]] || ok=0
+          done
+          # A real (tiny, cached) Gemini call: catches a wrong API key or a model the project can't use.
+          deep="$(curl -s --max-time 60 "${URL}/api/health?deep=1")"
+          echo "deep health: ${deep}"
+          grep -q '"gemini":"ok"' <<<"${deep}" || { echo "Gemini does not answer"; ok=0; }
+          if [[ "${ok}" != 1 ]]; then
+            if [[ -n "${PREVIOUS}" ]]; then
+              echo "Smoke test failed: sending all traffic back to ${PREVIOUS}"
+              gcloud run services update-traffic "${SERVICE}" --region "${REGION}" --project "${PROJECT}" --to-revisions "${PREVIOUS}=100" --quiet
+            fi
+            exit 1
+          fi
+          echo "### Deployed ${URL}" >> "$GITHUB_STEP_SUMMARY"
