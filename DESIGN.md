@@ -49,8 +49,8 @@ Week headings in the plan are written on a short strip of tape. List rows are ru
   inside its own column; the section outline shows only while dragging. Arrow keys move a focused card
   (Shift for bigger steps); Alt + arrow keys move its pin.
 - **Touch:** a finger holds still for a moment (350 ms) before a card or pin follows it, so a swipe that starts
-  on a card still scrolls the page and a quick tap still opens the concept. On phones the map is a list,
-  with the pin in each card's top-right corner and the key folded away.
+  on a card still scrolls the page and a quick tap still opens the concept. On phones the board sits in a
+  window that pans in any direction, like a map, and the key is folded away; "Show as a list" is still below it.
 - **Pins:** drag a pin anywhere on its card to change where its strings are tied. By default a pin sits in
   the strip above the text, on the side its strings leave from or arrive at.
 - **Memory:** positions are remembered per student and course in the browser; "Reset layout" puts

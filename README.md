@@ -43,16 +43,35 @@ Nobody sees the gap until the student is already behind.
 
 **Gemini reads and proposes; code decides.** Every number a student sees comes from code that can be tested. The live [How it works page](https://throughline-96823963383.us-central1.run.app/#/how) shows each step, each formula with its constants, and an interactive version of the student model.
 
-```
-syllabus ─redact─► 1 READ      Gemini: timeline, prerequisites, "or equivalent" routes, AI policy
-course number ───► 2 RECORD    SF State Bulletin (parser + verified snapshot)
-                   3 MAP       Gemini ×3 independent runs: what each week relies on
-                   4 RESOLVE   embeddings + union-find; keep what most runs agree on; acyclic graph
-                   5 EVIDENCE  BM25 + embeddings (RRF); Gemini judges coverage; code verifies quotes
-                   6 PACKS     Gemini: refresher, learn path, 3 questions; resources from a checked catalog
-                   7 VERIFY    Gemini re-solves every question blind; disagreements hidden
-                       │
-     student ──► knowledge-space model ──► adaptive check ──► pace plan ──► study
+```mermaid
+flowchart TD
+    SYL["Syllabus<br/>PDF, Word, scan or pasted text"] -- "redact names, emails, phones" --> READ
+    CODE["Course number"] --> REC
+
+    subgraph BUILD["Course build: a Cloud Tasks job, about 80–100 s"]
+        READ["1 READ · Gemini<br/>timeline, prerequisites, 'or equivalent' routes, AI policy"]
+        REC["2 RECORD · SF State Bulletin<br/>parser + verified snapshot"]
+        MAP["3 MAP · Gemini × 3 independent runs<br/>what each week relies on"]
+        RES["4 RESOLVE · embeddings + union-find<br/>keep what most runs agree on; acyclic graph"]
+        EVI["5 EVIDENCE · BM25 + embeddings (RRF)<br/>Gemini judges coverage; code verifies quotes"]
+        PACK["6 PACKS · Gemini<br/>refresher, learn path, 3 questions; resources from a checked catalog"]
+        VER["7 VERIFY · Gemini re-solves every question blind<br/>disagreements hidden"]
+        READ --> MAP
+        REC --> MAP
+        MAP --> RES --> EVI --> PACK --> VER
+    end
+
+    VER --> DB[("Firestore<br/>course map, questions, resources")]
+    DB --> SETUP
+
+    subgraph STUDENT["Student"]
+        SETUP["Setup<br/>how they met the prerequisite, weekly time"] --> KS["Knowledge-space model<br/>P(knows each concept), drawn as the prerequisite map"]
+        KS <-- "each answer: Bayesian update" --> CHECK["Adaptive check<br/>most informative question, at most 8"]
+        KS --> PLAN["Pace plan<br/>foundations first, done before the class that needs it"]
+        PLAN --> STUDY["Study<br/>own notes matched per concept,<br/>then open textbook, then practice"]
+    end
+
+    DB -. "answers from 5+ students" .-> CLASS["Class view<br/>instructor sees aggregates only"]
 ```
 
 | Algorithm | What it does | Code |
@@ -64,6 +83,30 @@ course number ───► 2 RECORD    SF State Bulletin (parser + verified snap
 | **Adaptive check** | Next question = maximum expected information gain over concepts needed in the next 3 weeks; stop below 0.02 bits or at 8 questions | `assessment.py` |
 | **Precedence-aware scheduling** | d′(u) = min(d(u), d′(v) − ⌈t(v)/(B/7)⌉) along the graph, then earliest-deadline-first into the weekly budget B | `readiness.py` |
 | **Privacy** | Class aggregates hidden below 5 students (k-anonymity) | `heatmap.py` |
+
+## Architecture
+
+One Cloud Run service serves both the React app and the FastAPI backend. Course builds run as Cloud Tasks jobs, so a build survives restarts and redeploys. Without a Gemini key, an offline engine (keyword heuristics) takes over.
+
+```mermaid
+flowchart TD
+    U["Student or instructor<br/>phone or laptop"] --> FE["React + TypeScript app<br/>Vite"]
+    FE -- "sign-in" --> AUTH["Firebase Authentication<br/>anonymous for students,<br/>Google to add a course"]
+    FE -- "/api + Firebase ID token" --> API["FastAPI<br/>Cloud Run"]
+
+    GH["GitHub Actions<br/>CI, then Deploy"] -- "Workload Identity<br/>Federation" --> AR["Artifact Registry<br/>container image"]
+    AR -- "deploy, smoke test,<br/>roll back on failure" --> API
+    SEC["Secret Manager"] -. "Gemini key" .-> API
+
+    API -- "course number" --> BUL["SF State Bulletin<br/>parser + verified snapshot"]
+    API -- "enqueue build" --> TASKS["Cloud Tasks<br/>course-builds queue"]
+    TASKS -- "OIDC-signed callback" --> JOB["Course build job<br/>same Cloud Run service"]
+    JOB --> GEM["Gemini 3.5 Flash<br/>read, map × 3, judge,<br/>write, verify"]
+    JOB --> EMB["Gemini embeddings<br/>gemini-embedding-001"]
+    JOB -- "course map" --> DB[("Firestore<br/>courses, maps,<br/>answers, notes")]
+    API -- "match a student's notes" --> GEM
+    API -- "plans, checks, answers" --> DB
+```
 
 ## Built on Google
 

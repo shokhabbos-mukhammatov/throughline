@@ -232,45 +232,16 @@ export function PrereqMapTab({ course }: { course: CourseDetail }) {
         <h2>Prerequisite map</h2>
         <span className="muted small">
           {data.nodes.length} concepts · {data.edges.length} "builds on" links · strings run from what you need first (left) to what builds on it (right)
-          {width >= NARROW && <> · drag a card to rearrange its column</>}
-          {width >= NARROW && Object.keys(spots).length > 0 && <> · <button className="btn ghost small inline-btn" onClick={() => setSpots({})}>Reset layout</button></>}
+          {width < NARROW ? <> · swipe in any direction to explore; hold a card to move it</> : <> · drag a card to rearrange its column</>}
+          {Object.keys(spots).length > 0 && <> · <button className="btn ghost small inline-btn" onClick={() => setSpots({})}>Reset layout</button></>}
         </span>
       </div>
       <div className="sheet-body">
         {data.edges.length === 0 && (
           <p className="small muted">No concept here builds on another, so they can be studied in any order. The plan orders them by when the course needs them.</p>
         )}
-        <div className="graph-wrap" ref={box}>
-          {width < NARROW ? (
-            <ol className="layers">
-              {Array.from({ length: g.cols }, (_, c) => (
-                <li key={c}>
-                  <span className="label">{COLUMN_NAMES[c] ?? "Then"}</span>
-                  <ul className="plain">
-                    {[...g.placed.values()].filter((n) => n.col === c).sort((a, b) => a.y - b.y).map((n) => {
-                      const before = data.edges.filter((e) => e.dst === n.id).map((e) => names.get(e.src));
-                      return (
-                        <li key={n.id}>
-                          <a href={`#/c/${course.id}/k/${n.id}`} className={`gnode flow st-${n.status} cov-${n.coverage}`} style={{ "--tilt": tilt(n.id) } as CSSProperties}>
-                            <span className="gn-top">
-                              <span className={`status ${n.status}`}><StatusIcon status={n.status} size={13} /></span>
-                              <b>{n.name}</b>
-                            </span>
-                            {before.length > 0 && <span className="small muted">Builds on {before.join(", ")}</span>}
-                            <span className="gn-bottom">
-                              <span className={n.next_need?.overdue ? "late" : ""}>{when(n)}</span>
-                              <span className="mono">{pct(n.p)}</span>
-                            </span>
-                            <span className="gn-p"><i style={{ width: `${Math.max(3, n.p * 100)}%` }} /></span>
-                          </a>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                </li>
-              ))}
-            </ol>
-          ) : (
+        {/* On phones the board sits in a window that pans both ways, like a map; elsewhere the page scrolls it. */}
+        <div className={`graph-wrap ${width < NARROW ? "pan" : ""}`} ref={box}>
           <div className="graph" style={{ width: g.width, height: g.height }}>
             {Array.from({ length: g.cols }, (_, c) => (
               <span key={c} className="graph-col label" style={{ left: PAD + c * g.sec, width: g.sec }}>{COLUMN_NAMES[c] ?? "Then"}</span>
@@ -361,7 +332,6 @@ export function PrereqMapTab({ course }: { course: CourseDetail }) {
               })}
             </svg>
           </div>
-          )}
         </div>
         {(() => {
           const key = <div className="legend">
@@ -373,11 +343,11 @@ export function PrereqMapTab({ course }: { course: CourseDetail }) {
           <span className="item"><span className="swatch cov-likely" /> probably from a listed prerequisite</span>
           <span className="item"><span className="swatch cov-missing" /> not in listed prerequisites</span>
           <span className="item"><span className="swatch cov-unknown" /> not confirmed</span>
-          {width >= NARROW && <span className="item"><svg className="thread-sample" width="30" height="8" aria-hidden><g className="thread weak" style={{ "--t": "var(--ink-3)" } as CSSProperties}><path className="yarn" d="M2 4h26" /></g></svg> dashed string: fewer than 2 of 3 mapping runs agreed</span>}
+          <span className="item"><svg className="thread-sample" width="30" height="8" aria-hidden><g className="thread weak" style={{ "--t": "var(--ink-3)" } as CSSProperties}><path className="yarn" d="M2 4h26" /></g></svg> dashed string: fewer than 2 of 3 mapping runs agreed</span>
 </div>;
           return width < NARROW ? <details className="legend-key"><summary>What the icons and pin colours mean</summary>{key}</details> : key;
         })()}
-        {width >= NARROW && <details className="graph-list">
+        <details className="graph-list">
           <summary className="small">Show as a list</summary>
           <ul className="plain">
             {[...g.placed.values()].sort((a, b) => a.col - b.col || a.y - b.y).map((n) => {
@@ -390,7 +360,7 @@ export function PrereqMapTab({ course }: { course: CourseDetail }) {
               );
             })}
           </ul>
-        </details>}
+        </details>
       </div>
     </section>
   );
