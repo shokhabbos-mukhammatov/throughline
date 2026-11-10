@@ -123,3 +123,36 @@ def test_prerequisite_syllabus_upload_rechecks_coverage():
     chain = next(c for c in detail["concepts"] if c["name"] == "Derivatives and the Chain Rule")
     assert chain["coverage"] == "missing", "the instructor's 'no calculus required' note still wins"
     assert client.post(f"/api/courses/{course['id']}/prereq-syllabus", data={"prereq_code": "X"}, files=files, headers=STUDENT).status_code == 403
+
+
+def test_only_the_owner_can_delete_a_course_and_only_by_typing_its_number():
+    owner, student = {"X-Demo-User": "owner-del"}, {"X-Demo-User": "student-del"}
+    course = client.post("/api/demo/sample", headers=owner).json()
+    cid = course["id"]
+    client.put(f"/api/courses/{cid}/me", json={"weekly_minutes": 120}, headers=student)
+    detail = client.get(f"/api/courses/{cid}", headers=owner).json()
+    assert detail["confirm_name"] == "DEMO 410" and detail["students"] == 1
+    assert "confirm_name" not in client.get(f"/api/courses/{cid}", headers=student).json()
+
+    assert client.post(f"/api/courses/{cid}/delete", json={"confirm": "DEMO 410"}, headers=student).status_code == 403
+    wrong = client.post(f"/api/courses/{cid}/delete", json={"confirm": "DEMO 41"}, headers=owner)
+    assert wrong.status_code == 400 and "DEMO 410" in wrong.json()["detail"]
+    assert client.get(f"/api/courses/{cid}", headers=owner).status_code == 200, "nothing deleted on a wrong name"
+
+    done = client.post(f"/api/courses/{cid}/delete", json={"confirm": "  demo   410 "}, headers=owner).json()
+    assert done == {"deleted": cid, "students": 1}
+    assert client.get(f"/api/courses/{cid}", headers=student).status_code == 404
+    assert client.get(f"/api/join/{course['join_code']}").status_code == 404
+    assert all(c["id"] != cid for c in client.get("/api/courses/mine", headers=owner).json())
+    from throughline.api import services
+    assert services.course(cid).concepts.list() == [] and services.course(cid).responses.list() == []
+
+
+def test_a_course_being_mapped_cannot_be_deleted():
+    owner = {"X-Demo-User": "owner-del2"}
+    course = client.post("/api/demo/sample", headers=owner).json()
+    from throughline.api import services
+    stored = services.catalog.get(course["id"])
+    stored.build.status = "running"
+    services.catalog.put(stored)
+    assert client.post(f"/api/courses/{course['id']}/delete", json={"confirm": "DEMO 410"}, headers=owner).status_code == 409

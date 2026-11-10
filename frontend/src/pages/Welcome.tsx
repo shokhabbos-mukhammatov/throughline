@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { go } from "../App";
 import { Spinner } from "../components/ui";
 import { api, joinedCourses, rememberCourse, type CoursePublic } from "../lib/api";
+import { shortDate } from "../lib/format";
 import { AddCourseForm } from "./Library";
 
 function JoinForm() {
@@ -49,7 +50,7 @@ function MyCourses() {
         {[...all.values()].map((c) => (
           <a key={c.id} className="course-link" href={`#/c/${c.id}`}>
             <b>{c.code || "New course"}</b> <span>{c.title}</span>
-            <span className="muted small">{c.term}{c.demo ? " · sample" : ""}{c.build.status !== "ready" ? ` · ${c.build.status === "error" ? "couldn't be mapped" : "mapping…"}` : ""}</span>
+            <span className="muted small">{c.term}{c.demo ? " · sample" : ""}{c.created_at ? ` · added ${shortDate(c.created_at)}` : ""}{c.build.status !== "ready" ? ` · ${c.build.status === "error" ? "couldn't be mapped" : "mapping…"}` : ""}</span>
           </a>
         ))}
       </div>

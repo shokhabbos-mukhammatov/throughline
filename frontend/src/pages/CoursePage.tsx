@@ -4,7 +4,7 @@ import { go } from "../App";
 import { orList } from "../components/Background";
 import { ConceptDrawer } from "../components/ConceptDrawer";
 import { Icon, Spinner } from "../components/ui";
-import { api, rememberCourse, type CourseDetail } from "../lib/api";
+import { api, forgetCourse, rememberCourse, type CourseDetail } from "../lib/api";
 import { AI_LABEL, TIMELINE_LABEL } from "../lib/format";
 import { ClassViewTab } from "./ClassView";
 import { PrereqMapTab } from "./GraphPage";
@@ -157,7 +157,11 @@ export function CoursePage({ id, tab, concept }: { id: string; tab: string; conc
   });
   useEffect(() => rememberCourse(id), [id]);
 
-  if (error) return <section className="sheet"><div className="empty"><p className="error-text">{(error as Error).message}</p><a href="#/">Back</a></div></section>;
+  if (error) {
+    const gone = (error as Error).message === "Course not found";
+    if (gone) forgetCourse(id);
+    return <section className="sheet"><div className="empty"><p className="error-text">{gone ? "This course was deleted, or the link is wrong." : (error as Error).message}</p><a href="#/">Back</a></div></section>;
+  }
   if (!c) return <section className="sheet"><div className="empty"><Spinner /></div></section>;
   if (c.build.status !== "ready") return <BuildProgress course={c} />;
 

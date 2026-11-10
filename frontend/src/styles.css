@@ -980,3 +980,14 @@ mark.hl, .late { color: inherit; padding-inline: 0.12em; -webkit-box-decoration-
 @media (pointer: coarse) {
   .rv-pick input { width: 22px; height: 22px; }
 }
+
+/* ---------- deleting a course: set apart at the end of Review map, confirmed by typing its number ---------- */
+.danger-zone { display: flex; align-items: center; justify-content: space-between; gap: 12px 20px; flex-wrap: wrap; margin-top: 10px;
+  padding: 14px 16px; border: 1.5px solid color-mix(in srgb, var(--critical) 45%, transparent); border-radius: var(--radius); }
+.danger-zone > div { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1 1 260px; }
+.btn.danger-solid { background: var(--critical); border-color: var(--critical); color: #fff; }
+.btn.danger-solid:disabled { opacity: 0.45; }
+.delete-modal { width: min(520px, calc(100vw - 24px)); }
+.delete-body { display: flex; flex-direction: column; gap: 12px; }
+.delete-body ul { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 4px; }
+.delete-body input { font-family: var(--font-mono); }

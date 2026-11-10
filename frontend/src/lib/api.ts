@@ -64,6 +64,7 @@ export interface CoursePublic {
   prereq_docs: string[];
   join_code: string;
   demo: boolean;
+  created_at?: string;
   build: Build;
 }
 
@@ -178,6 +179,9 @@ export interface Enrollment {
 export interface CourseDetail extends CoursePublic {
   is_owner: boolean;
   engine: { label: string; online: boolean };
+  /** Owner only: what to type to delete the course, and how many students would lose their data. */
+  confirm_name?: string;
+  students?: number;
   week_now?: number;
   enrolled?: boolean;
   enrollment?: Enrollment;
@@ -455,6 +459,14 @@ export function rememberCourse(id: string) {
   }
 }
 
+export function forgetCourse(id: string) {
+  try {
+    localStorage.setItem(JOINED_KEY, JSON.stringify(joinedCourses().filter((x) => x !== id)));
+  } catch {
+    /* storage may be unavailable */
+  }
+}
+
 /* ---------- fetch ---------- */
 
 async function req<T>(path: string, init: RequestInit = {}): Promise<T> {
@@ -549,6 +561,8 @@ export const api = {
     req<{ applied: number; skipped: string[]; revision: RevisionView }>(`/api/courses/${id}/revisions/${rid}/apply`,
       { method: "POST", body: json({ change_ids: changeIds }) }),
   discardRevision: (id: string, rid: string) => req<RevisionView>(`/api/courses/${id}/revisions/${rid}/discard`, { method: "POST" }),
+  deleteCourse: (id: string, confirm: string) =>
+    req<{ deleted: string; students: number }>(`/api/courses/${id}/delete`, { method: "POST", body: json({ confirm }) }),
   recheck: (id: string) => req<CoursePublic>(`/api/courses/${id}/recheck`, { method: "POST" }),
   rebuild: (id: string) => req<CoursePublic>(`/api/courses/${id}/rebuild`, { method: "POST" }),
   classView: (id: string, includeSimulated: boolean) => req<ClassView>(`/api/courses/${id}/class?include_simulated=${includeSimulated}`),
