@@ -1,16 +1,21 @@
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
+import { PrereqQuestions, PriorCourseList, named, openChoices, orList, type MetMap } from "../components/Background";
 import { CoverageTag, Spinner } from "../components/ui";
-import { api, type CourseDetail, type Route, type SelfReport } from "../lib/api";
-import { ROUTE_LABEL, shortDate } from "../lib/format";
+import { api, type CourseDetail, type PriorCourseDraft, type SelfReport } from "../lib/api";
+import { shortDate } from "../lib/format";
 
 const TIMES = [60, 120, 180, 300, 480];
 
 export function Setup({ course, onDone }: { course: CourseDetail; onDone: (check: boolean) => void }) {
   const qc = useQueryClient();
-  const [route, setRoute] = useState<Route>(course.enrollment?.route ?? "unsure");
-  const alternatives = course.official_prereqs;
-  const [taken, setTaken] = useState<string>(course.enrollment?.prereq_taken ?? (alternatives.length === 1 ? alternatives[0] : ""));
+  const groups = course.prereq_groups;
+  const titles = useMemo(() => Object.fromEntries(course.bulletin.map((b) => [b.code, b.title])), [course.bulletin]);
+  const [met, setMet] = useState<MetMap>(course.enrollment?.met ?? {});
+  const [drafts, setDrafts] = useState<PriorCourseDraft[]>([]);
+  const [adding, setAdding] = useState<string | null>(null);
+  const [draftErrors, setDraftErrors] = useState<Record<string, string>>({});
+  const { data: saved } = useQuery({ queryKey: ["background", course.id], queryFn: () => api.background(course.id) });
   const [weekly, setWeekly] = useState(course.enrollment?.weekly_minutes ?? 180);
   const [reports, setReports] = useState<Record<string, SelfReport>>(course.enrollment?.self_report ?? {});
   const [busy, setBusy] = useState(false);
@@ -26,17 +31,32 @@ export function Setup({ course, onDone }: { course: CourseDetail; onDone: (check
     return all.filter((c) => c.next_need!.overdue || c.next_need!.week < Math.max(now, 1) + 3);
   }, [all, course.week_now]);
   const concepts = showAll || soon.length === 0 ? all : soon;
-  const prereqName = alternatives.join(" or ") || "the listed prerequisite";
+  const open = openChoices(groups, met);
 
-  function pickRoute(r: Route) {
-    setRoute(r);
-    // Taking the listed course here makes "yes" the likely answer for what that course teaches.
-    if (r === "took_here") {
-      setReports((prev) => {
-        const next = { ...prev };
-        for (const c of concepts) if (c.covered_by && (!taken || c.covered_by === taken) && !next[c.id]) next[c.id] = "yes";
-        return next;
-      });
+  function refresh() {
+    qc.invalidateQueries({ queryKey: ["course", course.id] });
+    qc.invalidateQueries({ queryKey: ["background", course.id] });
+    qc.invalidateQueries({ queryKey: ["plan", course.id] });
+    qc.invalidateQueries({ queryKey: ["graph", course.id] });
+  }
+
+  // Answers are saved as they change, so the "taught in" labels below follow the courses you actually took.
+  function changeMet(next: MetMap) {
+    setMet(next);
+    api.updateMe(course.id, { met: next, draft: !course.enrolled }).then(refresh).catch(() => undefined);
+  }
+
+  async function addCourse(d: PriorCourseDraft) {
+    setAdding(d.uid);
+    setDraftErrors((m) => ({ ...m, [d.uid]: "" }));
+    try {
+      await api.addPriorCourse(course.id, d);
+      setDrafts((ds) => ds.filter((x) => x.uid !== d.uid));
+      refresh();
+    } catch (e) {
+      setDraftErrors((m) => ({ ...m, [d.uid]: (e as Error).message }));
+    } finally {
+      setAdding(null);
     }
   }
 
@@ -44,9 +64,15 @@ export function Setup({ course, onDone }: { course: CourseDetail; onDone: (check
     setBusy(true);
     setError(null);
     try {
-      await api.updateMe(course.id, { route, prereq_taken: route === "took_here" ? taken : "", weekly_minutes: weekly, self_report: reports });
+      await api.updateMe(course.id, { met, weekly_minutes: weekly, self_report: reports });
+      for (const d of drafts.filter(named)) {  // typed in but not added yet
+        await api.addPriorCourse(course.id, d);
+        setDrafts((ds) => ds.filter((x) => x.uid !== d.uid));
+      }
       await qc.invalidateQueries({ queryKey: ["course", course.id] });
       await qc.invalidateQueries({ queryKey: ["plan", course.id] });
+      qc.invalidateQueries({ queryKey: ["background", course.id] });
+      qc.invalidateQueries({ queryKey: ["graph", course.id] });
       onDone(check);
     } catch (e) {
       setError((e as Error).message);
@@ -63,30 +89,21 @@ export function Setup({ course, onDone }: { course: CourseDetail; onDone: (check
         <span className="muted small">About a minute. Only you see your answers; your instructor sees class totals at most.</span>
       </div>
       <div className="sheet-body setup-grid">
-        <fieldset>
-          <legend className="field-label">1 · How did you meet the prerequisite ({prereqName})?</legend>
-          {(Object.keys(ROUTE_LABEL) as Route[]).map((r) => (
-            <label key={r} className="radio">
-              <input type="radio" name="route" checked={route === r} onChange={() => pickRoute(r)} />{" "}
-              {r === "took_here" && alternatives.length > 1 ? "I took one of the listed prerequisites at SF State" : ROUTE_LABEL[r]}
-            </label>
-          ))}
-          {route === "took_here" && alternatives.length > 1 && (
-            <div className="field">
-              <span className="small">Which one? What it taught decides what you're likely to know.</span>
-              <div className="seg small" role="radiogroup" aria-label="Which prerequisite did you take?">
-                {alternatives.map((code) => (
-                  <button key={code} className={taken === code ? "on" : ""} aria-pressed={taken === code} onClick={() => setTaken(code)}>{code}</button>
-                ))}
-              </div>
-            </div>
+        <div className="span2 setup-step">
+          <span className="field-label">1 · {groups.length ? "The prerequisites, and how you met each one" : "Courses you took before"}</span>
+          {groups.length > 1 && <span className="small muted">This course asks for {groups.length} things. Answer each one separately.</span>}
+          <PrereqQuestions groups={groups} titles={titles} met={met} onMet={changeMet} drafts={drafts} onDrafts={setDrafts}
+                           saved={saved ?? []} onAdd={addCourse} adding={adding} errors={draftErrors} />
+          {saved && saved.length > 0 && (
+            <>
+              <span className="label">Courses you've added · only you can see these</span>
+              <PriorCourseList items={saved} courseId={course.id} total={(course.concepts ?? []).length}
+                               onRemove={async (id) => { await api.deletePriorCourse(course.id, id); refresh(); }} />
+            </>
           )}
-          <p className="small muted">Have notes or slides from that course? Add them under <b>My notes</b> after setup, and your plan points to the exact page or slide.</p>
-          {(route === "equivalent" || route === "permission") && (
-            <p className="small notice">Equivalent courses and waivers often skip topics this course assumes. Answer honestly below; "never studied" gets you a real study plan, not a quiz.</p>
-          )}
-        </fieldset>
-        <fieldset>
+          <p className="small muted">Kept your notes or slides too? Add them under <b>My notes</b> after setup, and your plan points to the exact page or slide.</p>
+        </div>
+        <fieldset className="span2">
           <legend className="field-label">2 · Time you can spend on prerequisite review each week</legend>
           <div className="seg">
             {TIMES.map((m) => (
@@ -121,18 +138,21 @@ export function Setup({ course, onDone }: { course: CourseDetail; onDone: (check
         </fieldset>
       </div>
       <div className="sheet-foot">
-        <button className="btn primary" disabled={busy} onClick={() => save(true)}>{busy ? <Spinner /> : null} Save and take the quick check</button>
-        <button className="btn" disabled={busy} onClick={() => save(false)}>Save and see my plan</button>
+        <button className="btn primary" disabled={busy || open.length > 0} onClick={() => save(true)}>{busy ? <Spinner /> : null} Save and take the quick check</button>
+        <button className="btn" disabled={busy || open.length > 0} onClick={() => save(false)}>Save and see my plan</button>
+        {open.length > 0 && <span className="small notice warn">First say which of {open.map(orList).join("; and which of ")} you took (step 1).</span>}
         {error && <span className="error-text">{error}</span>}
         {course.enrolled && <span className="spacer" />}
         {course.enrolled && (
           <button className="btn ghost small danger" disabled={busy} onClick={async () => {
-            if (!window.confirm(`Delete your answers and setup for ${course.code}? This can't be undone.`)) return;
+            if (!window.confirm(`Delete your answers, earlier courses and setup for ${course.code}? This can't be undone.`)) return;
             setBusy(true);
             try {
               await api.deleteMe(course.id);
               setReports({});
+              setMet({});
               await qc.invalidateQueries({ queryKey: ["course", course.id] });
+              qc.invalidateQueries({ queryKey: ["background", course.id] });
               qc.removeQueries({ queryKey: ["plan", course.id] });
               qc.removeQueries({ queryKey: ["graph", course.id] });
             } catch (e) {

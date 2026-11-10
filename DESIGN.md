@@ -22,7 +22,7 @@ The goal is a calm, focused, learning vibe. It isn't a scrapbook, and it isn't n
 | Object | Looks like | Used for | Rule |
 |---|---|---|---|
 | **Taped slip** | Paper sheet (`--surface` with `--grain`, no outline) with two strips of translucent tape on its top corners | Main panels you work in: the plan, the add-course form, notes, setup | Never rotated. These hold reading text. |
-| **Pinned card** | Index card held by a pushpin (round head and a steel needle), tilted by about a third of a degree at most. "Coming up" has the red index-card line under its heading | Concepts on the prerequisite map; the "Coming up" card | The pin's colour shows coverage: green = taught in a listed prerequisite, grey = probably, gold = not in the listed prerequisites, hollow = not confirmed. |
+| **Pinned card** | Index card held by a pushpin (round head and a steel needle), tilted by about a third of a degree at most. "Coming up" has the red index-card line under its heading | Concepts on the prerequisite map; the "Coming up" card | The pin's colour shows coverage for you: green = taught in a course you took, grey = probably, gold = not in the listed prerequisites or not in the ones you took, hollow = not confirmed. |
 | **Sticky note** | Coloured note (`--note`) with one tape strip, tilted a fifth of a degree | The one thing to do next: "Start with a 3-minute check", important notices | At most one per screen, so it stays the obvious next step. |
 | **Sticker** | Small rounded label with a paper-white outline and a soft lift | Course pills, coverage tags, source tags | Flat colour. The text keeps 4.5:1 contrast. |
 | **Highlighter** | A marker stroke behind words | "Needed now" / "Already in use", and the key phrase of the home headline | Only for urgency or the single most important phrase. |
@@ -40,6 +40,12 @@ notes; each algorithm is a sheet with its formula (KaTeX); app screenshots are t
 browser window playing six scenes of the sample course on a loop (paused off screen, still under reduced motion);
 the workflow cards light up in order while on screen; "Built with" is two looping rows of logo stickers
 (Simple Icons, CC0), which stop and wrap under reduced motion.
+
+**The prerequisites you took** (setup, and the add-course form) is one small slip per requirement: a single course, or
+"One of A or B". The answers are round stickers you press (*I took it*, *An equivalent somewhere else*, *Didn't take it*,
+*Not sure*); with alternatives, each course is its own sticker and more than one can be on. A course you add, from any
+school, is a plain card with two fields and its syllabus as a file or pasted text. Saved courses are slips that quote
+what their syllabus teaches.
 
 Week headings in the plan are written on a short strip of tape. List rows are ruled like notebook paper (`--ruling`).
 

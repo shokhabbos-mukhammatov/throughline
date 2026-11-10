@@ -1,4 +1,4 @@
-"""A student's own notes and slides from a prerequisite course, and courses with alternative prerequisites."""
+"""A student's own notes and slides from a prerequisite course."""
 
 import io
 import zipfile
@@ -7,8 +7,6 @@ from fastapi.testclient import TestClient
 
 from throughline import api
 from throughline.materials import build_material, pptx_sections, read_material
-from throughline.models import Enrollment
-from throughline.readiness import Snapshot, concept_view, plan
 from throughline.seed import sample
 
 client = TestClient(api.app)
@@ -86,27 +84,6 @@ def test_unreadable_files_are_refused_clearly():
     r = client.post(f"/api/courses/{course['id']}/materials", headers={"X-Demo-User": "stu-m3"},
                     files={"file": ("old.ppt", b"binary", "application/vnd.ms-powerpoint")})
     assert r.status_code == 415 and ".pptx" in r.json()["detail"]
-
-
-def test_coverage_counts_only_for_the_alternative_the_student_took(ctx):
-    course = sample.create_sample(ctx, "owner")
-    course.official_prereqs = ["DEMO 212", "MATH 108"]  # "DEMO 212 or MATH 108"
-    ctx.catalog.put(course)
-    repo = ctx.course(course.id)
-    desc = next(c for c in repo.concepts.list() if c.name == "Descriptive Statistics")
-    assert desc.coverage == "listed" and desc.covered_by == "DEMO 212"
-
-    def view(**enrollment):
-        repo.enrollments.put(Enrollment(id="s", route="took_here", **enrollment))
-        snap = Snapshot.load(course, repo, "s", ctx.now().date())
-        return concept_view(snap, snap.concepts[desc.id]), snap
-
-    took_212, snap_212 = view(prereq_taken="DEMO 212")
-    took_108, snap_108 = view(prereq_taken="MATH 108")
-    assert took_212["coverage"] == "listed" and took_212["covered_by"] == "DEMO 212"
-    assert took_108["coverage"] == "unknown" and took_108["covered_by"] is None
-    assert snap_212.model.prior[snap_212.model.ids.index(desc.id)] > snap_108.model.prior[snap_108.model.ids.index(desc.id)]
-    assert plan(snap_108)["weeks"] is not None
 
 
 def test_prereq_choice_must_be_a_listed_alternative():

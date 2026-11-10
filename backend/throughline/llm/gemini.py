@@ -29,6 +29,9 @@ def _context_block(ctx: CourseContext) -> str:
         parts.append(f"Prerequisite statement: {ctx.prereq_text}")
     if ctx.official_prereqs:
         parts.append("Listed prerequisite courses: " + ", ".join(ctx.official_prereqs))
+    if len(ctx.official_prereqs) > 1 and ctx.prereq_groups:
+        parts.append("A student must have taken: " + " and ".join(
+            f"({' or '.join(g)})" if len(g) > 1 else g[0] for g in ctx.prereq_groups))
     if ctx.bulletin:
         parts.append("Bulletin descriptions:\n" + "\n".join(f"- {b}" for b in ctx.bulletin))
     if ctx.informal_requirements:

@@ -168,6 +168,8 @@ def study(snap: Snapshot, repo: CourseRepo, concept_id: str) -> dict:
         **concept_view(snap, c),
         "evidence": c.evidence,
         "evidence_items": [e.model_dump() for e in c.evidence_items],
+        "your_evidence": [e.model_dump() for e in snap.personal[c.id].evidence],
+        "by_course": [r.model_dump() for r in c.by_course],
         "aliases": c.aliases,
         "leads_to": [snap.concepts[d].name for d in snap.dependents.get(concept_id, [])],
         "refresher": c.refresher,

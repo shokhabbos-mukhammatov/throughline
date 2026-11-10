@@ -1,10 +1,13 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { CoverageTag, FileDrop, Markdown, ResourceList, Spinner } from "../components/ui";
-import { api, type CourseDetail, type ReviewQuestion, type StageTrace } from "../lib/api";
+import { api, type CourseDetail, type Coverage, type ReviewQuestion, type StageTrace } from "../lib/api";
 import { pct } from "../lib/format";
 
 const LETTERS = "ABCD";
+const COVERAGE_WORD: Record<Coverage, string> = {
+  listed: "teaches it", likely: "probably", missing: "not in its syllabus", gap: "not taken", unknown: "not confirmed",
+};
 
 function QuestionRow({ courseId, q }: { courseId: string; q: ReviewQuestion }) {
   const qc = useQueryClient();
@@ -64,30 +67,43 @@ function Trace({ trace }: { trace: StageTrace[] }) {
 
 function PrereqUpload({ course }: { course: CourseDetail }) {
   const qc = useQueryClient();
-  const [code, setCode] = useState(course.official_prereqs[0] ?? "");
+  const missing = course.official_prereqs.filter((c) => !course.prereq_docs.includes(c));
+  const [code, setCode] = useState(missing[0] ?? course.official_prereqs[0] ?? "");
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [file, setFile] = useState<File | null>(null);
+  const [paste, setPaste] = useState(false);
+  const [text, setText] = useState("");
   return (
     <div className="prereq-upload">
-      <span className="label">Check coverage against what the prerequisite actually taught</span>
+      <span className="label">Check coverage against what each prerequisite actually taught</span>
       <p className="small muted">
-        Bulletin descriptions are a sentence or two. Upload the prerequisite course's syllabus and every "not confirmed" concept gets a real answer,
-        with the line that shows it. {course.prereq_docs.length > 0 && <>Already added: {course.prereq_docs.join(", ")}.</>}
+        Bulletin descriptions are a sentence or two. Add a prerequisite course's syllabus (one per course, as a file or pasted text) and every
+        "not confirmed" concept gets a real answer for that course, with the line that shows it.{" "}
+        {course.official_prereqs.length > 0 && (
+          <>Have: {course.prereq_docs.join(", ") || "none"}.{missing.length > 0 && <> Still Bulletin-only: {missing.join(", ")}.</>}</>
+        )}
       </p>
-      <FileDrop compact file={file} onFile={setFile} accept=".pdf,.docx,.txt,.md,.html,image/*" label="Prerequisite syllabus"
-                prompt="Drop the prerequisite's syllabus here" />
+      {paste ? (
+        <textarea rows={4} value={text} onChange={(e) => setText(e.target.value)} aria-label="Prerequisite syllabus text"
+                  placeholder="Paste the prerequisite's syllabus: the topics by week are what matter." />
+      ) : (
+        <FileDrop compact file={file} onFile={setFile} accept=".pdf,.docx,.txt,.md,.html,image/*" label="Prerequisite syllabus"
+                  prompt="Drop the prerequisite's syllabus here" />
+      )}
       <div className="form-row">
         <input type="text" value={code} onChange={(e) => setCode(e.target.value)} placeholder="e.g. DS 212" aria-label="Prerequisite course" style={{ width: 130 }} />
+        <button className="btn ghost small" onClick={() => { setPaste((p) => !p); setFile(null); setText(""); }}>{paste ? "Upload a file instead" : "Paste its text instead"}</button>
         <button className="btn small" disabled={busy || !code.trim()} onClick={async () => {
           const f = file;
-          if (!f) return setMsg("Choose the syllabus file first.");
+          if (paste ? text.trim().length < 20 : !f) return setMsg(paste ? "Paste the syllabus text first." : "Choose the syllabus file first.");
           setBusy(true);
           setMsg(null);
           try {
-            await api.addPrereqSyllabus(course.id, code, f);
+            await api.addPrereqSyllabus(course.id, code, paste ? null : f, text);
             setMsg("Added. Re-checking coverage…");
             setFile(null);
+            setText("");
             setTimeout(() => {
               qc.invalidateQueries({ queryKey: ["review", course.id] });
               qc.invalidateQueries({ queryKey: ["course", course.id] });
@@ -143,6 +159,9 @@ export function ReviewTab({ course }: { course: CourseDetail }) {
             {c.aliases.length > 0 && <p className="small muted">Also called: {c.aliases.join(", ")}</p>}
             {c.depth && <p className="small"><b>Depth:</b> {c.depth}</p>}
             <p className="small"><b>Evidence:</b> {c.evidence || "none"}</p>
+            {c.by_course.length > 1 && (
+              <p className="small muted">By course: {c.by_course.map((r) => `${r.code}: ${COVERAGE_WORD[r.coverage]}`).join(" · ")}</p>
+            )}
             <ResourceList resources={c.resources} />
             <ul className="plain">{c.questions.map((q) => <QuestionRow key={q.id} courseId={course.id} q={q} />)}</ul>
             <button className="btn small ghost" onClick={async () => {

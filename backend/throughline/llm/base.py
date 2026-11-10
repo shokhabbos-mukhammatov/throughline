@@ -84,6 +84,7 @@ class CourseContext:
     label: str
     prereq_text: str = ""
     official_prereqs: list[str] = field(default_factory=list)
+    prereq_groups: list[list[str]] = field(default_factory=list)  # every group required; codes in a group are alternatives
     informal_requirements: list[str] = field(default_factory=list)
     instructor_notes: list[str] = field(default_factory=list)
     taught_here: list[str] = field(default_factory=list)

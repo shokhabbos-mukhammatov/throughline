@@ -1,11 +1,12 @@
 import { useState } from "react";
 import { go } from "../App";
+import { PrereqQuestions, hasSyllabus, isOwnCopy, named, openChoices, orList, type MetMap } from "../components/Background";
 import { FileDrop, Spinner } from "../components/ui";
-import { api, rememberCourse, type BulletinEntry } from "../lib/api";
+import { api, rememberCourse, type BulletinEntry, type PriorCourseDraft } from "../lib/api";
 import { signInWithGoogle } from "../lib/session";
 import { useAccount } from "../lib/useAccount";
 
-/** Add a course: a course number (looked up in the SF State Bulletin) plus its syllabus. */
+/** Add a course: a course number (looked up in the SF State Bulletin), its syllabus, and the prerequisites you took. */
 export function AddCourseForm() {
   const account = useAccount();
   const [code, setCode] = useState("");
@@ -14,10 +15,14 @@ export function AddCourseForm() {
   const [file, setFile] = useState<File | null>(null);
   const [paste, setPaste] = useState(false);
   const [text, setText] = useState("");
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [prereqCode, setPrereqCode] = useState("");
-  const [prereqFile, setPrereqFile] = useState<File | null>(null);
+  const [created, setCreated] = useState<string | null>(null);
+  const [met, setMet] = useState<MetMap>({});
+  const [drafts, setDrafts] = useState<PriorCourseDraft[]>([]);
+
+  const groups = entry?.prereq_groups ?? [];
+  const open = openChoices(groups, met);
 
   async function check() {
     if (code.trim().length < 4) return;
@@ -26,7 +31,6 @@ export function AddCourseForm() {
       const hit = await api.bulletin(code);
       setEntry(hit);
       setLookup("idle");
-      if (!prereqCode && hit.prereq_codes[0]) setPrereqCode(hit.prereq_codes[0]);
     } catch {
       setEntry(null);
       setLookup("none");
@@ -34,26 +38,40 @@ export function AddCourseForm() {
   }
 
   async function submit() {
-    setBusy(true);
     setError(null);
+    // A listed prerequisite's own syllabus is evidence for everyone in the class; a course taken instead stays private.
+    const shared = drafts.filter((d) => isOwnCopy(d) && hasSyllabus(d));
+    const mine = drafts.filter((d) => !isOwnCopy(d) && named(d));
+    let id = created;
     try {
-      const prereq = prereqFile && prereqCode.trim() ? { code: prereqCode, file: prereqFile } : null;
-      const course = await api.addCourse(code, file, paste ? text : "", prereq);
-      rememberCourse(course.id);
-      go(`/c/${course.id}`);
+      if (!id) {
+        setBusy("Starting the map…");
+        const course = await api.addCourse(code, file, paste ? text : "", shared.map((d) => ({ code: d.code, file: d.file, text: d.text })));
+        id = course.id;
+        setCreated(id);
+        rememberCourse(id);
+        setDrafts((ds) => ds.filter((d) => !shared.includes(d)));
+      }
+      if (Object.keys(met).length) await api.updateMe(id, { met, draft: true });
+      for (const d of mine) {
+        setBusy(`Saving ${d.code.trim()}…`);
+        await api.addPriorCourse(id, d);
+        setDrafts((ds) => ds.filter((x) => x.uid !== d.uid));
+      }
+      go(`/c/${id}`);
     } catch (e) {
       setError((e as Error).message);
-      setBusy(false);
+      setBusy(null);
     }
   }
 
-  const ready = code.trim().length >= 3 && (paste ? text.trim().length > 80 : file != null) && !(prereqFile && !prereqCode.trim());
+  const ready = code.trim().length >= 3 && (paste ? text.trim().length > 80 : file != null) && open.length === 0;
   return (
     <div className="add-course">
       <div className="field">
         <label className="field-label" htmlFor="code">Course number</label>
-        <input id="code" type="text" placeholder="e.g. DS 612" value={code} autoComplete="off"
-               onChange={(e) => { setCode(e.target.value); setEntry(null); setLookup("idle"); }} onBlur={check} />
+        <input id="code" type="text" placeholder="e.g. DS 612" value={code} autoComplete="off" disabled={created != null}
+               onChange={(e) => { setCode(e.target.value); setEntry(null); setLookup("idle"); setMet({}); }} onBlur={check} />
         {lookup === "busy" && <span className="muted small"><Spinner /> Looking it up in the SF State Bulletin…</span>}
         {entry && (
           <div className="bulletin-hit">
@@ -78,33 +96,34 @@ export function AddCourseForm() {
         </button>
       </div>
 
-      <details className="field prereq-optional">
-        <summary className="field-label">Optional · the prerequisite course's syllabus</summary>
-        <p className="small muted">
-          Bulletin descriptions are a sentence or two, so they can't say whether a topic was really covered. With the prerequisite's own
-          syllabus, every concept gets a quoted answer: taught there, or not.
-        </p>
-        <input type="text" value={prereqCode} onChange={(e) => setPrereqCode(e.target.value)} placeholder="Its course number, e.g. DS 212" aria-label="Prerequisite course number" />
-        <FileDrop compact file={prereqFile} onFile={setPrereqFile} accept=".pdf,.docx,.txt,.md,.html,image/*" label="Prerequisite syllabus file"
-                  prompt="Drop its syllabus here" />
-        {prereqFile && !prereqCode.trim() && <span className="error-text small">Add the prerequisite's course number.</span>}
-      </details>
+      <div className="field">
+        <span className="field-label">The prerequisites you took</span>
+        <span className="small muted">
+          {groups.length > 0
+            ? "What you were taught depends on the courses you took, so the map checks those. A syllabus (file or pasted text) gets every concept a quoted answer: taught there, or not."
+            : "If this course lists prerequisites, we ask how you met each one once the syllabus is read. You can already add courses you took, at any school."}
+        </span>
+        <PrereqQuestions groups={groups} met={met} onMet={setMet} drafts={drafts} onDrafts={setDrafts}
+                         ownCopyNote="used for everyone who joins this course" />
+      </div>
 
       <p className="muted small">
-        Instructor names, emails and phone numbers are removed before the syllabus is stored or sent to AI. Syllabi are course materials: don't
-        share one outside your class without the instructor's OK.
+        Instructor names, emails and phone numbers are removed before a syllabus is stored or sent to AI. Syllabi are course materials: don't
+        share one outside your class without the instructor's OK. A course you took somewhere else stays private to you.
       </p>
       <div className="row-actions">
         {account.mode === "firebase" && !account.signedIn ? (
-          <button className="btn primary" disabled={busy} onClick={() => signInWithGoogle().catch((e) => setError((e as Error).message))}>
+          <button className="btn primary" disabled={busy != null} onClick={() => signInWithGoogle().catch((e) => setError((e as Error).message))}>
             Sign in with Google to map it
           </button>
         ) : (
-          <button className="btn primary" disabled={!ready || busy} onClick={submit}>
-            {busy ? <Spinner /> : null} Map my course
+          <button className="btn primary" disabled={!ready || busy != null} onClick={submit}>
+            {busy ? <><Spinner /> {busy}</> : created ? "Try again" : "Map my course"}
           </button>
         )}
+        {open.length > 0 && <span className="small notice warn">First say which of {open.map(orList).join("; and which of ")} you took.</span>}
         {error && <span className="error-text">{error}</span>}
+        {error && created && <a className="btn ghost small" href={`#/c/${created}`}>Skip this and open the course</a>}
       </div>
     </div>
   );

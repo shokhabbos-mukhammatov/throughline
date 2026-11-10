@@ -9,6 +9,7 @@ from __future__ import annotations
 from datetime import date
 
 from . import mastery as mx
+from .background import Background
 from .models import Course
 from .readiness import HORIZON_WEEKS, current_week, topic_date
 from .repo import CourseRepo
@@ -21,7 +22,8 @@ def class_view(course: Course, repo: CourseRepo, today: date, min_cell: int, inc
     edges = [e for e in repo.edges.list() if e.src in concepts and e.dst in concepts]
     names = {c.id: c.name for c in clist}
     reqs = [r for r in repo.requirements.list() if r.concept_id in concepts and r.topic_id in topics]
-    enrollments = {e.id: e for e in repo.enrollments.list() if include_simulated or not e.simulated}
+    # e.setup is False while a student has only answered the prerequisite questions on the add-course form
+    enrollments = {e.id: e for e in repo.enrollments.list() if e.setup and (include_simulated or not e.simulated)}
     responses = [r for r in repo.responses.list() if r.student in enrollments]
     week_now = current_week(course, list(topics.values()), today)
 
@@ -30,11 +32,16 @@ def class_view(course: Course, repo: CourseRepo, today: date, min_cell: int, inc
     for r in sorted(responses, key=lambda r: r.at):
         per_student.setdefault(r.student, {}).setdefault(r.concept_id, []).append(r)
         all_by_student.setdefault(r.student, []).append(r)
+    took_before: dict[str, list] = {}
+    for p in repo.prior_courses.list():
+        took_before.setdefault(p.student, []).append(p)
+
+    def model(sid, e):
+        background = Background(course, e, took_before.get(sid, []))
+        return mx.KnowledgeModel.build(clist, edges, e, all_by_student.get(sid, []), background={c.id: background.of(c).prior for c in clist})
+
     # Same knowledge model the student sees, one per student; only totals leave this function.
-    statuses = {
-        sid: mx.assess(mx.KnowledgeModel.build(clist, edges, e, all_by_student.get(sid, [])), clist, e, names)
-        for sid, e in enrollments.items()
-    }
+    statuses = {sid: mx.assess(model(sid, e), clist, e, names) for sid, e in enrollments.items()}
 
     rows = []
     for c in concepts.values():

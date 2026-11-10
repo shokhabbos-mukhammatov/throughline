@@ -1,8 +1,11 @@
 import { identityHeaders } from "./session";
 
 export type Status = "ready" | "likely" | "refresh" | "learn" | "unchecked";
-export type Coverage = "listed" | "likely" | "missing" | "unknown";
+/** "gap" is personal: a listed prerequisite teaches it, but not a course this student took. */
+export type Coverage = "listed" | "likely" | "missing" | "gap" | "unknown";
 export type Route = "took_here" | "equivalent" | "permission" | "unsure";
+/** How a student met one listed prerequisite. */
+export type Met = "took" | "elsewhere" | "none" | "unsure";
 export type SelfReport = "yes" | "never" | "unsure";
 export type TimelineKind = "dated_weeks" | "weeks" | "assessments" | "estimated";
 
@@ -20,6 +23,8 @@ export interface BulletinEntry {
   prerequisites: string;
   prereq_codes: string[];
   source: string;
+  /** Every group is required; codes inside a group are alternatives ("A or B"). */
+  prereq_groups?: string[][];
 }
 
 export interface StageTrace {
@@ -47,6 +52,7 @@ export interface CoursePublic {
   term_start: string | null;
   term_end: string | null;
   official_prereqs: string[];
+  prereq_groups: string[][];
   prereq_text: string;
   prereq_routes: string[];
   informal_requirements: string[];
@@ -89,6 +95,30 @@ export interface StudySource {
   quote: string;
 }
 
+/** A course the student took before, at any school. Its syllabus text is never sent back, only what it covers. */
+export interface PriorCourse {
+  id: string;
+  code: string;
+  title: string;
+  school: string;
+  replaces: string | null;
+  source: string;
+  has_syllabus: boolean;
+  checked: number;
+  covers: { concept_id: string; name: string; quote: string; verdict: "teaches" | "partial" }[];
+  created_at: string;
+}
+
+/** An earlier course being added: its name, where it was taken, and its syllabus as a file or pasted text. */
+export interface PriorCourseDraft {
+  uid: string; // only in this browser, to tell drafts apart
+  code: string;
+  school: string;
+  replaces: string;
+  file: File | null;
+  text: string;
+}
+
 export interface Material {
   id: string;
   filename: string;
@@ -108,6 +138,7 @@ export interface ConceptView {
   confidence: number;
   covered_by: string | null;
   coverage: Coverage;
+  coverage_note: string;
   hidden: boolean;
   in_your_notes: NoteHit[];
   status: Status;
@@ -139,6 +170,7 @@ export interface Enrollment {
   id: string;
   route: Route;
   prereq_taken: string | null;
+  met: Record<string, Met>;
   weekly_minutes: number;
   self_report: Record<string, SelfReport>;
 }
@@ -149,6 +181,8 @@ export interface CourseDetail extends CoursePublic {
   week_now?: number;
   enrolled?: boolean;
   enrollment?: Enrollment;
+  /** "A or B" requirements this student hasn't answered yet. */
+  choices_needed?: string[][];
   timeline?: TimelineItem[];
   concepts?: ConceptView[];
 }
@@ -241,6 +275,8 @@ export interface GraphData {
 export interface Study extends ConceptView {
   evidence: string;
   evidence_items: Evidence[];
+  your_evidence: Evidence[];
+  by_course: { code: string; coverage: Coverage; source: string; quote: string }[];
   aliases: string[];
   leads_to: string[];
   refresher: string;
@@ -279,6 +315,7 @@ export interface ReviewConcept {
   hidden: boolean;
   evidence: string;
   evidence_items: Evidence[];
+  by_course: { code: string; coverage: Coverage; source: string; quote: string }[];
   removed: boolean;
   resources: Resource[];
   questions: ReviewQuestion[];
@@ -388,32 +425,46 @@ const json = (body: unknown) => JSON.stringify(body);
 export const api = {
   health: () => req<{ ok: boolean; engine: string; online: boolean }>("/api/health"),
   bulletin: (code: string) => req<BulletinEntry>(`/api/bulletin/${encodeURIComponent(code)}`),
-  addCourse: (code: string, file: File | null, text: string, prereq?: { code: string; file: File } | null) => {
+  /** `prereqs`: syllabi of listed prerequisites, each a file or pasted text; they become evidence for the whole class. */
+  addCourse: (code: string, file: File | null, text: string, prereqs: { code: string; file: File | null; text: string }[] = []) => {
     const form = new FormData();
     form.set("code", code);
     if (file) form.set("file", file);
     if (text.trim()) form.set("text", text);
-    if (prereq) {
-      form.set("prereq_code", prereq.code);
-      form.set("prereq_file", prereq.file);
-    }
+    const files: File[] = [];
+    const listed = prereqs.map((p) => (p.file ? { code: p.code, file: files.push(p.file) - 1 } : { code: p.code, text: p.text }));
+    if (listed.length) form.set("prereqs", JSON.stringify(listed));
+    files.forEach((f) => form.append("prereq_files", f));
     return req<CoursePublic>("/api/courses", { method: "POST", body: form });
   },
-  addPrereqSyllabus: (id: string, code: string, file: File) => {
+  addPrereqSyllabus: (id: string, code: string, file: File | null, text = "") => {
     const form = new FormData();
     form.set("prereq_code", code);
-    form.set("file", file);
+    if (file) form.set("file", file);
+    else form.set("text", text);
     return req<CoursePublic>(`/api/courses/${id}/prereq-syllabus`, { method: "POST", body: form });
   },
   sample: () => req<CoursePublic>("/api/demo/sample", { method: "POST" }),
   mine: () => req<CoursePublic[]>("/api/courses/mine"),
   join: (code: string) => req<CoursePublic>(`/api/join/${encodeURIComponent(code.trim().toUpperCase())}`),
   course: (id: string) => req<CourseDetail>(`/api/courses/${id}`),
-  updateMe: (id: string, body: Partial<Pick<Enrollment, "route" | "weekly_minutes" | "self_report">> & { prereq_taken?: string }) =>
+  /** `draft` saves the prerequisite answers without finishing setup. */
+  updateMe: (id: string, body: Partial<Pick<Enrollment, "met" | "weekly_minutes" | "self_report">> & { draft?: boolean }) =>
     req<Enrollment>(`/api/courses/${id}/me`, { method: "PUT", body: json(body) }),
+  background: (id: string) => req<PriorCourse[]>(`/api/courses/${id}/background`),
+  addPriorCourse: (id: string, c: PriorCourseDraft) => {
+    const form = new FormData();
+    form.set("code", c.code);
+    form.set("school", c.school);
+    form.set("replaces", c.replaces);
+    if (c.file) form.set("file", c.file);
+    else if (c.text.trim()) form.set("text", c.text);
+    return req<PriorCourse>(`/api/courses/${id}/background`, { method: "POST", body: form });
+  },
+  deletePriorCourse: (id: string, priorId: string) => req<{ deleted: string }>(`/api/courses/${id}/background/${priorId}`, { method: "DELETE" }),
   plan: (id: string) => req<Plan>(`/api/courses/${id}/plan`),
   checkNext: (id: string, session: string[]) => req<CheckStep>(`/api/courses/${id}/check/next`, { method: "POST", body: json({ session }) }),
-  deleteMe: (id: string) => req<{ deleted_responses: number; deleted_materials: number }>(`/api/courses/${id}/me`, { method: "DELETE" }),
+  deleteMe: (id: string) => req<{ deleted_responses: number; deleted_materials: number; deleted_courses: number }>(`/api/courses/${id}/me`, { method: "DELETE" }),
   materials: (id: string) => req<Material[]>(`/api/courses/${id}/materials`),
   addMaterial: (id: string, file: File, prereqCode: string) => {
     const form = new FormData();

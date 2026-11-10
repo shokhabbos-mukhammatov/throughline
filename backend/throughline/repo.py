@@ -10,7 +10,7 @@ from typing import Any, Generic, TypeVar
 
 from pydantic import BaseModel
 
-from .models import BankQuestion, Concept, Course, Edge, Enrollment, Material, Requirement, Response, Topic
+from .models import BankQuestion, Concept, Course, Edge, Enrollment, Material, PriorCourse, Requirement, Response, Topic
 from .store import Store
 
 T = TypeVar("T", bound=BaseModel)
@@ -79,6 +79,7 @@ class CourseRepo:
         self.responses = Collection(store, course_id, "responses", Response)
         self.enrollments = Collection(store, course_id, "enrollments", Enrollment)
         self.materials = Collection(store, course_id, "materials", Material)
+        self.prior_courses = Collection(store, course_id, "prior_courses", PriorCourse)
 
     def clear_map(self) -> None:
         for col in (self.topics, self.concepts, self.edges, self.requirements, self.questions):

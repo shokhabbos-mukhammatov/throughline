@@ -114,13 +114,19 @@ npm run typecheck && npm run build     # no errors expected
 Start the app (section 2), then in the browser:
 
 1. **Sample course.** Home → **Try the sample course**.
-   - Setup: pick "I took an equivalent course somewhere else", **3 h**, mark "Derivatives and the Chain Rule" as **Never**, then **Save and take the quick check**.
+   - Setup, step 1: for DEMO 212 pick **An equivalent somewhere else**, name the course you took (for example `CSE 206`, any school),
+     paste a few lines of its syllabus (`Week 3: Simple linear regression…`) and press **Add**. It lists what that syllabus teaches, and the
+     labels in step 3 change to *Taught in CSE 206 (…)* or *Not in the courses you took*.
+   - Then **3 h**, mark "Derivatives and the Chain Rule" as **Never**, and **Save and take the quick check**.
    - Quick check: each question shows *why* it was picked; answer a few. Each answer shows how the estimate moved, including for related concepts.
    - **My plan**: foundations come before what builds on them ("comes before …"); anything that can't fit appears under **Won't fit before it's needed**.
    - **Prerequisite map**: arrows from what you need first to what builds on it. Click a concept: its evidence quote and where to learn it.
    - **My notes**: upload slides or notes from the prerequisite (PDF, .pptx, .docx, text or a photo). In 5–30 seconds it lists which concepts they cover and on which slide or page; **My plan** then shows "Your notes · slide N" before the textbook links.
    - **Class view**: a simulated class, with cells hidden below 5 students. **Review map**: "How this map was built". **Share**: QR code.
-2. **A real syllabus** (needs the Gemini key). Home → course number (e.g. `DS 612`) → upload the syllabus → **Map my course**. It takes about 1–2 minutes. Then check:
+2. **A real syllabus** (needs the Gemini key). Home → course number (e.g. `DS 612`) → upload the syllabus. DS 612 requires
+   *DS 212 or ECON 212*, and *ISYS 263*: the form asks how you met each one, and **Map my course** stays off until you say which of
+   DS 212 or ECON 212 you took. Add a prerequisite's syllabus there if you have it (a file or pasted text; one per course). Mapping takes
+   about 1–2 minutes. Then check:
    - the timeline matches the syllabus;
    - the prerequisite map makes sense;
    - **Review map** shows about 20 model calls and no errors.
@@ -253,12 +259,14 @@ Click the verification link Google emails you.
 Keep the files on your laptop; never commit them (`private/` is git-ignored).
 
 1. Add **CSC 665** with its syllabus (about 75 seconds to map with Gemini).
-2. Setup: **I took an equivalent course somewhere else**, then **Save and see my plan**.
-3. **My notes** → it opens on *Another course*; type **CSE 206** and upload the CSE 206 week 2 and week 3 slides
-   (and the course curriculum PDF). Each file lists the concepts it covers, with the page.
+2. Setup, step 1: for the prerequisite met abroad choose **An equivalent somewhere else**, type **CSE 206** and the
+   university, and add the CSE 206 curriculum (the PDF, or its text pasted). In 10–30 seconds it lists what that
+   course taught; concepts change to *Taught in CSE 206 (…)* or *Not in the courses you took*. **Save and see my plan**.
+3. **My notes** → choose **CSE 206** and upload the week 2 and week 3 slides. Each file lists the concepts it
+   covers, with the page.
 4. **My plan**: rows matched to the slides now say *Your CSE 206 PDF: … · page N* before the textbook link.
-   The point to make: a course from another university counts for this student, page by page, without touching
-   the course map other students see.
+   The point to make: a course from another university counts for this student, concept by concept and page by
+   page, without touching the course map other students see.
 
 **Prepare**
 

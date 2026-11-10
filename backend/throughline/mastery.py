@@ -5,7 +5,7 @@ Regression, nobody "knows" the first without the second, so the only feasible kn
 downsets of the graph. We keep a probability distribution over those states:
 
   prior      each concept's prior from what the student told us ("studied it" / "not sure" / "never")
-             and whether a listed prerequisite covers it, multiplied out over feasible states only;
+             and whether a course they took covers it (background.py), multiplied out over feasible states only;
   evidence   each multiple-choice answer has a slip (know it, answer wrong: 10%) and a guess (don't know it,
              answer right: 25% with four options) probability, and updates every state;
   marginal   P(knows concept) = total probability of the states that contain it.
@@ -49,23 +49,16 @@ def _h(p: np.ndarray) -> np.ndarray:
     return -(p * np.log2(p) + (1 - p) * np.log2(1 - p))
 
 
-def coverage_applies(concept: Concept, enrollment: Enrollment) -> bool:
-    """Evidence that a listed prerequisite teaches it only counts if that is the prerequisite this student took
-    (a course can list alternatives: "DS 110 or MATH 108 or MATH 110")."""
-    return not (enrollment.prereq_taken and concept.covered_by and concept.covered_by != enrollment.prereq_taken)
-
-
-def prior_for(concept: Concept, enrollment: Enrollment, in_notes: bool = False) -> float:
+def prior_for(concept: Concept, enrollment: Enrollment, in_notes: bool = False, background: float | None = None) -> float:
+    """`background` is the prior from the courses this student took (0.55 taught there, 0.35 a gap, 0.50 unknown)."""
     report = enrollment.self_report.get(concept.id)
     if report in PRIOR_BY_REPORT:
         return PRIOR_BY_REPORT[report]
     if in_notes:
         return 0.60  # the student's own notes from an earlier course cover it: they were taught it
-    if concept.coverage == "listed" and enrollment.route == "took_here" and coverage_applies(concept, enrollment):
-        return 0.55
-    if concept.coverage == "missing" or (enrollment.route in ("equivalent", "permission") and concept.coverage != "listed"):
-        return 0.35
-    return 0.50
+    if background is not None:
+        return background
+    return 0.35 if concept.coverage == "missing" else 0.50
 
 
 @dataclass
@@ -85,7 +78,7 @@ class KnowledgeModel:
         return self.states is not None
     @classmethod
     def build(cls, concepts: list[Concept], edges: list[Edge], enrollment: Enrollment, responses: list[Response],
-              in_notes: frozenset[str] | set[str] = frozenset()) -> "KnowledgeModel":
+              in_notes: frozenset[str] | set[str] = frozenset(), background: dict[str, float] | None = None) -> "KnowledgeModel":
         ids = [c.id for c in concepts]
         index = {cid: i for i, cid in enumerate(ids)}
         n = len(ids)
@@ -96,7 +89,8 @@ class KnowledgeModel:
                 parents[index[e.dst]].append(index[e.src])
                 children[index[e.src]].append(index[e.dst])
         order = _topo(n, parents)
-        prior = np.asarray([prior_for(c, enrollment, c.id in in_notes) for c in concepts], dtype=np.float64)
+        background = background or {}
+        prior = np.asarray([prior_for(c, enrollment, c.id in in_notes, background.get(c.id)) for c in concepts], dtype=np.float64)
 
         states = _downsets(order, parents) if n <= 30 else None
         model = cls(ids=ids, parents=parents, children=children, prior=prior, states=None, bits=None, log_post=None, p_indep=None)

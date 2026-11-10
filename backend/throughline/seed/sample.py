@@ -132,7 +132,7 @@ def create_sample(ctx: Ctx, owner: str, simulate: bool = True) -> Course:
     start = term_start(today)
     course = Course(
         owner=owner, code=CODE, title=TITLE, term=f"Sample term {start.year}", term_start=start,
-        term_end=start + timedelta(weeks=14), official_prereqs=["DEMO 212"], prereq_text=PREREQ,
+        term_end=start + timedelta(weeks=14), official_prereqs=["DEMO 212"], prereq_groups=[["DEMO 212"]], prereq_text=PREREQ,
         prereq_routes=["or equivalent", "permission of the instructor"],
         instructor_notes=["No calculus or linear algebra background is required."],
         ai_policy=AiPolicy(stance="limited", summary="Generative AI may be used to explain concepts; graded work must be your own."),
