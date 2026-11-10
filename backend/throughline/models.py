@@ -243,7 +243,7 @@ class BankQuestion(BaseModel):
     status: QuestionStatus = "approved"
     verification: Verification = "unverified"
     verification_note: str = ""
-    origin: Literal["ai", "sample", "edited"] = "ai"
+    origin: Literal["ai", "sample", "edited", "instructor"] = "ai"  # instructor = from a file the course owner added
     order: int = 0
 
     def public(self) -> dict:
@@ -315,6 +315,64 @@ class PriorCourse(BaseModel):
     @property
     def label(self) -> str:
         return f"{self.code} ({self.school})" if self.school else self.code
+
+
+class RevisionFile(BaseModel):
+    """A file the course owner added to a revision request: a review guide, study guide, sample exam..."""
+
+    label: str  # "f1", "f2": how the model cites it
+    filename: str
+    kind: str = "notes"
+    chunks: list[MaterialChunk] = Field(default_factory=list)  # redacted, with page or slide locations
+
+
+ChangeKind = Literal["add_concept", "remove_concept", "edit_concept", "add_need", "remove_need", "add_question"]
+
+
+class Change(BaseModel):
+    """One proposed edit to the map, checked by code before the owner sees it."""
+
+    id: str = Field(default_factory=lambda: new_id("chg"))
+    kind: ChangeKind
+    concept_id: str | None = None  # existing concept, or the new one's id for add_concept / its questions
+    name: str = ""  # concept name, for display (and the new name for edit_concept)
+    summary: str = ""
+    depth: str = ""
+    topic_id: str | None = None  # add_need / remove_need
+    importance: Importance = "essential"
+    how_used: str = ""
+    reason: str = ""
+    source: str = ""  # file name and location the quote is from; empty when it rests on the request alone
+    quote: str = ""
+    quote_ok: bool = False  # the quote really is in that file
+    selected: bool = True  # proposed as on; the owner can switch any change off
+    concept: Concept | None = None  # add_concept: the full concept, study material written
+    needs: list[Requirement] = Field(default_factory=list)  # add_concept: where the course uses it
+    builds_on: list[str] = Field(default_factory=list)  # add_concept: ids of concepts it builds on
+    questions: list[BankQuestion] = Field(default_factory=list)  # add_question: one; add_concept: its study questions
+    note: str = ""  # anything code changed or flagged, e.g. "the answer key was disputed: kept as a draft"
+
+
+RevisionStatus = Literal["queued", "running", "ready", "applied", "discarded", "error"]
+
+
+class Revision(BaseModel):
+    """The course owner asking for the map to be corrected, with the files that back the request."""
+
+    id: str = Field(default_factory=lambda: new_id("rev"))
+    owner: str
+    prompt: str
+    files: list[RevisionFile] = Field(default_factory=list)
+    status: RevisionStatus = "queued"
+    stage: str = ""
+    error: str = ""
+    summary: str = ""  # the model's one-paragraph reading of the request
+    not_done: list[str] = Field(default_factory=list)  # parts of the request it couldn't act on, and why
+    changes: list[Change] = Field(default_factory=list)
+    applied: list[str] = Field(default_factory=list)  # change ids applied
+    calls: dict[str, int] = Field(default_factory=dict)
+    created_at: datetime = Field(default_factory=utcnow)
+    applied_at: datetime | None = None
 
 
 class Response(BaseModel):

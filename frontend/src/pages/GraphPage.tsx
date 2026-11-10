@@ -234,6 +234,7 @@ export function PrereqMapTab({ course }: { course: CourseDetail }) {
           {data.nodes.length} concepts · {data.edges.length} "builds on" links · strings run from what you need first (left) to what builds on it (right)
           {width < NARROW ? <> · swipe in any direction to explore; hold a card to move it</> : <> · drag a card to rearrange its column</>}
           {Object.keys(spots).length > 0 && <> · <button className="btn ghost small inline-btn" onClick={() => setSpots({})}>Reset layout</button></>}
+          {course.is_owner && <> · <a href={`#/c/${course.id}/review`}>Something wrong? Ask for changes</a></>}
         </span>
       </div>
       <div className="sheet-body">

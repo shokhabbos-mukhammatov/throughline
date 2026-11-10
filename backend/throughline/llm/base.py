@@ -10,7 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Protocol
 
-from .schemas import ConceptPacks, CoverageJudgments, MappingResult, SameConceptJudgments, Solutions, SyllabusParse
+from .schemas import ConceptPacks, CoverageJudgments, MappingResult, RevisionPlan, SameConceptJudgments, Solutions, SyllabusParse
 
 
 class EngineUnavailable(RuntimeError):
@@ -91,6 +91,28 @@ class CourseContext:
     bulletin: list[str] = field(default_factory=list)  # "DS 212 Business Statistics: <description>"
 
 
+@dataclass
+class MapConceptCard:
+    id: str
+    name: str
+    summary: str = ""
+    depth: str = ""
+    coverage: str = ""
+    needed_in: list[str] = field(default_factory=list)  # timeline item ids
+    builds_on: list[str] = field(default_factory=list)  # concept ids
+
+
+@dataclass
+class RevisionContext:
+    """The current map, the owner's request and the passages of the files they added."""
+
+    label: str
+    request: str
+    items: list[ItemCard]
+    concepts: list[MapConceptCard]
+    passages: list[EvidencePassage]  # label "f1.3": file 1, passage 3
+
+
 class Engine(Protocol):
     online: bool
     label: str
@@ -110,3 +132,5 @@ class Engine(Protocol):
     def write_packs(self, course_label: str, concepts: list[ConceptCard], catalog: list[ResourceCard]) -> ConceptPacks: ...
 
     def solve(self, questions: list[QuestionCard]) -> Solutions: ...
+
+    def revise_map(self, ctx: RevisionContext) -> RevisionPlan: ...

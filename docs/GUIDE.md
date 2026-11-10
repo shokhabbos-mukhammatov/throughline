@@ -123,6 +123,9 @@ Start the app (section 2), then in the browser:
    - **Prerequisite map**: arrows from what you need first to what builds on it. Click a concept: its evidence quote and where to learn it.
    - **My notes**: upload slides or notes from the prerequisite (PDF, .pptx, .docx, text or a photo). In 5–30 seconds it lists which concepts they cover and on which slide or page; **My plan** then shows "Your notes · slide N" before the textbook links.
    - **Class view**: a simulated class, with cells hidden below 5 students. **Review map**: "How this map was built". **Share**: QR code.
+   - **Review map → Ask for changes**: type `Logarithms aren't needed in this course.` and add a text file with a sample
+     question (`1. …` then `A)`–`D)` options and `Answer: B`). It proposes removing the concept and copying the question;
+     untick one, **Apply**, and the map and plan change; students' answers stay.
 2. **A real syllabus** (needs the Gemini key). Home → course number (e.g. `DS 612`) → upload the syllabus. DS 612 requires
    *DS 212 or ECON 212*, and *ISYS 263*: the form asks how you met each one, and **Map my course** stays off until you say which of
    DS 212 or ECON 212 you took. Add a prerequisite's syllabus there if you have it (a file or pasted text; one per course). Mapping takes

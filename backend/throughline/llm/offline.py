@@ -13,7 +13,7 @@ from datetime import date
 
 from ..seed import library
 from ..textutil import contains_phrase, course_code, hashed_embedding, jaccard, normalize_name, prereq_groups
-from .base import ConceptCard, CourseContext, CoverageRequest, EngineUnavailable, ItemCard, PairCard, QuestionCard, ResourceCard
+from .base import ConceptCard, CourseContext, CoverageRequest, EngineUnavailable, ItemCard, PairCard, QuestionCard, ResourceCard, RevisionContext
 from .schemas import (
     ConceptPack,
     ConceptPacks,
@@ -23,11 +23,15 @@ from .schemas import (
     FreeResource,
     GeneratedQuestion,
     ItemRequirements,
+    MapChange,
     MappingResult,
+    NeedRef,
     PairJudgment,
     PrereqGroup,
     RequiredConcept,
+    RevisionPlan,
     SameConceptJudgments,
+    SourceQuestion,
     Solutions,
     SyllabusParse,
     TimelineItem,
@@ -43,6 +47,11 @@ _TABLE_LINE = re.compile(r"^\s*(\d{1,2})(?:\t|\s{2,})(\S.*)$")
 _CELL_SPLIT = re.compile(r"\s*\|\s*|\s{3,}|\t")
 _AI_MENTION = re.compile(r"\b(AI|GenAI|generative|ChatGPT|artificial intelligence|Al)\b")
 _QUIZ_LINE = re.compile(r"^\W*((?:quiz|exam|midterm|test)\s*\d*)\s*[·:\-–—|]?\s*(.*)$", re.IGNORECASE)
+_NOT_NEEDED = re.compile(r"\b(remove|drop|delete|(?:is|are|isn't|aren't)?\s*not (?:needed|required|used|covered)|"
+                         r"(?:isn't|aren't) (?:needed|required|used|covered)|(?:doesn't|does not|don't|do not) need|no need)\b", re.IGNORECASE)
+# "3. Prompt? A) one B) two C) three D) four Answer: B", one option per line or all on one line
+_MC = re.compile(r"(?:^|\n)\s*(?:Q(?:uestion)?\s*)?\d{1,2}[.):]\s*(?P<q>[^\n]+?)\s*(?:\n|\s)\s*[Aa][.)]\s*(?P<a>[^\n]+?)\s*(?:\n|\s)\s*[Bb][.)]\s*(?P<b>[^\n]+?)"
+                 r"\s*(?:\n|\s)\s*[Cc][.)]\s*(?P<c>[^\n]+?)\s*(?:\n|\s)\s*[Dd][.)]\s*(?P<d>[^\n]+?)\s*(?:\n\s*(?:Answer|Key)\s*[:=]\s*(?P<key>[A-Da-d]))?(?=\n|$)")
 _SKIP_TITLES = ("spring break", "thanksgiving", "no class", "holiday", "no sessions")
 
 
@@ -258,3 +267,56 @@ class OfflineEngine:
 
     def solve(self, questions: list[QuestionCard]) -> Solutions:
         return Solutions(solutions=[])  # cannot verify without a model; questions stay "unverified"
+
+    def revise_map(self, ctx: RevisionContext) -> RevisionPlan:
+        """Keyword rules: "X isn't needed" removes X; a library concept named in the request or the files is added
+        (to the weeks whose topics mention it, or a week the sentence names); lettered questions are copied."""
+        changes: list[MapChange] = []
+        not_done: list[str] = []
+        phrases = lambda name: [name, *(library.find(name).keywords if library.find(name) else ())]  # noqa: E731
+        sentences = [s.strip() for s in re.split(r"(?<=[.!?;])\s+|\n+", ctx.request) if s.strip()]
+        removed: set[str] = set()
+        for s in sentences:
+            if not _NOT_NEEDED.search(s):
+                continue
+            for c in ctx.concepts:
+                if any(contains_phrase(s, p) for p in phrases(c.name)):
+                    changes.append(MapChange(action="remove", concept_id=c.id, reason=f"The request says: {s}"))
+                    removed.add(c.id)
+
+        on_map = {normalize_name(c.name) for c in ctx.concepts}
+        texts = [(None, s) for s in sentences if not _NOT_NEEDED.search(s)]
+        texts += [(p.label, line) for p in ctx.passages for line in p.text.split(" | ")]
+        for lib in library.CONCEPTS:
+            if normalize_name(lib.name) in on_map:
+                continue
+            hit = next(((label, t) for label, t in texts for ph in (lib.name, *lib.keywords) if contains_phrase(t, ph)), None)
+            if hit is None:
+                continue
+            label, text = hit
+            weeks = [int(w) for w in re.findall(r"\bweeks?\s+(\d{1,2})\b", text, re.IGNORECASE)]
+            items = [it for it in ctx.items if it.week in weeks] or [
+                it for it in ctx.items if any(contains_phrase(f"{it.title} {it.details}", ph) for ph in (lib.name, *lib.keywords))]
+            if not items:
+                not_done.append(f"{lib.name} came up, but no week on the timeline says it uses it.")
+                continue
+            changes.append(MapChange(action="add", name=lib.name, summary=lib.summary, depth=lib.depth,
+                                     add_needs=[NeedRef(item_id=it.id, how_used=f"{it.title} relies on it.") for it in items[:3]],
+                                     reason="Named in the request." if label is None else "Named in your file.",
+                                     source=label, quote=text[:200] if label else ""))
+            on_map.add(normalize_name(lib.name))
+
+        questions: list[SourceQuestion] = []
+        names = [c.name for c in ctx.concepts if c.id not in removed] + [c.name for c in changes if c.action == "add"]
+        for p in ctx.passages:
+            for m in _MC.finditer(p.text.replace(" | ", "\n")):
+                prompt, opts, key = m.group("q").strip(), [m.group(x).strip() for x in "abcd"], m.group("key")
+                about = f"{prompt} {' '.join(opts)}"
+                target = next((n for n in names if any(contains_phrase(about, ph) for ph in phrases(n))), None)
+                if target:
+                    questions.append(SourceQuestion(concept=next((c.id for c in ctx.concepts if c.name == target), target), prompt=prompt,
+                                                    choices=opts, correct_index="ABCD".index(key.upper()) if key else 0,
+                                                    key_from_file=bool(key), source=p.label))
+        found = f"{len(changes)} change{'s' if len(changes) != 1 else ''}, {len(questions)} question{'s' if len(questions) != 1 else ''}"
+        return RevisionPlan(summary=f"Offline rules: {found} from the files.",
+                            changes=changes, questions=questions[:12], not_done=not_done)

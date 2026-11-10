@@ -1,5 +1,6 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
+import { RevisionPanel } from "../components/Revisions";
 import { CoverageTag, FileDrop, Markdown, ResourceList, Spinner } from "../components/ui";
 import { api, type CourseDetail, type Coverage, type ReviewQuestion, type StageTrace } from "../lib/api";
 import { pct } from "../lib/format";
@@ -137,6 +138,7 @@ export function ReviewTab({ course }: { course: CourseDetail }) {
         </span>
       </div>
       <div className="sheet-body review">
+        <RevisionPanel course={course} />
         <Trace trace={data.trace} />
         <p className="small">
           Coverage: <b>{counts.listed ?? 0}</b> taught in a listed prerequisite (quote found) · <b>{counts.likely ?? 0}</b> probably ·{" "}

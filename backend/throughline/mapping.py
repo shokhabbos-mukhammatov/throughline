@@ -51,7 +51,8 @@ COVERAGE_PER_CALL = 6
 PASSAGES_PER_COURSE = 3  # shown to the judge for one concept and one prerequisite course
 QUESTIONS_PER_SOLVE = 12
 PARALLEL = 4
-JOBS = ("read_document", "parse_syllabus", "map_prerequisites", "embed", "judge_same", "judge_coverage", "write_packs", "solve")
+JOBS = ("read_document", "parse_syllabus", "map_prerequisites", "embed", "judge_same", "judge_coverage", "write_packs", "solve",
+        "revise_map")
 NEGATION = ("do not need", "don't need", "not required", "no prior", "not needed", "not assume", "without any")
 
 
@@ -568,6 +569,15 @@ def match_students_documents(run: Run, repo, concepts: list[Concept]) -> str:
         m.matches = match_concepts(run.engine, kept, m)
         repo.materials.put(m)
     return f"{len(syllabi)} syllabi from earlier courses, {len(notes)} notes files"
+
+
+def rematch_students(ctx: Ctx, course_id: str) -> None:
+    """After the owner adds concepts, compare students' syllabi and notes with the map again."""
+    course = ctx.catalog.get(course_id)
+    if course is None:
+        return
+    repo = ctx.course(course_id)
+    match_students_documents(Run(ctx=ctx, course=course, engine=CountingEngine(ctx.engine)), repo, repo.concepts.list())
 
 
 def build_course(ctx: Ctx, course_id: str, hint_code: str = "") -> None:
