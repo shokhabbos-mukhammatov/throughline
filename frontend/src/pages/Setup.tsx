@@ -93,7 +93,7 @@ export function Setup({ course, onDone }: { course: CourseDetail; onDone: (check
           <span className="field-label">1 · {groups.length ? "The prerequisites, and how you met each one" : "Courses you took before"}</span>
           {groups.length > 1 && <span className="small muted">This course asks for {groups.length} things. Answer each one separately.</span>}
           <PrereqQuestions groups={groups} titles={titles} met={met} onMet={changeMet} drafts={drafts} onDrafts={setDrafts}
-                           saved={saved ?? []} onAdd={addCourse} adding={adding} errors={draftErrors}
+                           saved={saved ?? []} onFile={course.prereq_docs} onAdd={addCourse} adding={adding} errors={draftErrors}
                            ownCopyNote={course.is_owner ? "you added this course, so it's also used to check the map for everyone" : "only you see it"} />
           {saved && saved.length > 0 && (
             <>

@@ -64,9 +64,11 @@ function DraftRow({ draft, onChange, onRemove, onAdd, busy, error, fixed }: {
  * `groups`: every group is required; codes inside a group are alternatives.
  * With `onAdd`, each course is uploaded as soon as it is added; without it, drafts wait for the surrounding form.
  */
-export function PrereqQuestions({ groups, titles = {}, met, onMet, drafts, onDrafts, saved = [], onAdd, adding = null, errors = {}, ownCopyNote }: {
+export function PrereqQuestions({ groups, titles = {}, met, onMet, drafts, onDrafts, saved = [], onFile = [], onAdd, adding = null, errors = {}, ownCopyNote }: {
   groups: string[][]; titles?: Record<string, string>; met: MetMap; onMet: (m: MetMap) => void;
   drafts: PriorCourseDraft[]; onDrafts: (d: PriorCourseDraft[]) => void; saved?: PriorCourse[];
+  /** Listed prerequisites whose syllabus the course already has (added with the course): nothing to ask for. */
+  onFile?: string[];
   onAdd?: (draft: PriorCourseDraft) => void; adding?: string | null; errors?: Record<string, string>; ownCopyNote?: string;
 }) {
   const row = (d: PriorCourseDraft, fixed = false) => (
@@ -126,6 +128,7 @@ export function PrereqQuestions({ groups, titles = {}, met, onMet, drafts, onDra
 
             {took.map((code) => {
               const own = drafts.find((d) => d.replaces === code && isOwnCopy(d));
+              if (onFile.includes(code)) return <span key={code} className="small muted prq-link">The {code} syllabus is already on file for this course, so there's nothing to add.</span>;
               if (savedCopy(code)) return <span key={code} className="small muted prq-link">Your {code} syllabus is added (see below).</span>;
               return own ? (
                 <div key={code} className="prq-more">
