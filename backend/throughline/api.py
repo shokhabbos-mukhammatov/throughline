@@ -363,6 +363,10 @@ def join(join_code: str):
 def course_detail(course_id: str, uid: str = Depends(current_uid)):
     course = _course(course_id)
     out = {**course.public(), "is_owner": course.owner == uid, "engine": {"label": engine.label, "online": engine.online}}
+    if course.owner == uid:  # what deleting the course would remove, for its warning
+        repo = services.course(course_id)
+        out["confirm_name"] = course.confirm_name
+        out["students"] = sum(1 for e in repo.enrollments.list() if not e.simulated and e.id != uid)
     if course.build.status != "ready":
         return out
     snap = _snapshot(course, uid)
@@ -787,6 +791,29 @@ def discard_revision(course_id: str, revision_id: str, uid: str = Depends(curren
     r.status = "discarded"
     services.course(course.id).revisions.put(r)
     return _revision_view(course.id, r)
+
+
+class DeleteBody(BaseModel):
+    confirm: str = Field(max_length=200)
+
+
+@app.post("/api/courses/{course_id}/delete")
+def delete_course(course_id: str, body: DeleteBody, uid: str = Depends(account_uid)):
+    """Delete a course for everyone: its map, questions, students' answers, notes and earlier courses, and requests.
+    The owner must type the course's number (or title) to confirm, as when deleting a repository."""
+    course = _owned(course_id, uid)
+    squash = lambda s: " ".join(s.split()).casefold()  # noqa: E731
+    if squash(body.confirm) != squash(course.confirm_name):
+        raise HTTPException(400, f"Type {course.confirm_name} exactly to confirm.")
+    repo = services.course(course.id)
+    if course.build.status in ("queued", "running") or any(r.status in ("queued", "running") for r in repo.revisions.list()):
+        raise HTTPException(409, "The course is being mapped or revised right now. Delete it once that finishes.")
+    with services.lock(course.id):
+        students = sum(1 for e in repo.enrollments.list() if not e.simulated and e.id != uid)
+        repo.wipe()
+        services.catalog.courses.delete_many([course.id])
+    log.info("course %s deleted by its owner (%d students)", course.id, students)
+    return {"deleted": course.id, "students": students}
 
 
 @app.post("/api/courses/{course_id}/recheck")

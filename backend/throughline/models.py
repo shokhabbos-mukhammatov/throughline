@@ -134,6 +134,11 @@ class Course(BaseModel):
     def _groups_in(cls, value):
         return [g["options"] if isinstance(g, dict) else g for g in value or []]
 
+    @property
+    def confirm_name(self) -> str:
+        """What the owner types to delete the course: its number, else its title."""
+        return self.code.strip() or self.title.strip() or "delete this course"
+
     def groups(self) -> list[list[str]]:
         """Courses mapped before groups were stored get them from the prerequisite statement."""
         return self.prereq_groups or prereq_groups(self.prereq_text, self.official_prereqs)
@@ -159,6 +164,7 @@ class Course(BaseModel):
             "prereq_docs": [d.code for d in self.prereq_docs],
             "join_code": self.join_code,
             "demo": self.demo,
+            "created_at": self.created_at.isoformat(),
             "build": self.build.model_dump(),
         }
 

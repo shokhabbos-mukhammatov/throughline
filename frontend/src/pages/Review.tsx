@@ -1,5 +1,6 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
+import { DeleteCourse } from "../components/DeleteCourse";
 import { RevisionPanel } from "../components/Revisions";
 import { CoverageTag, FileDrop, Markdown, ResourceList, Spinner } from "../components/ui";
 import { api, type CourseDetail, type Coverage, type ReviewQuestion, type StageTrace } from "../lib/api";
@@ -189,6 +190,7 @@ export function ReviewTab({ course }: { course: CourseDetail }) {
             }}>{c.removed ? "Restore this concept" : "Remove this concept from the map"}</button>
           </details>
         ))}
+        <DeleteCourse course={course} />
       </div>
     </section>
   );

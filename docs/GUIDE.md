@@ -123,6 +123,8 @@ Start the app (section 2), then in the browser:
    - **Prerequisite map**: arrows from what you need first to what builds on it. Click a concept: its evidence quote and where to learn it.
    - **My notes**: upload slides or notes from the prerequisite (PDF, .pptx, .docx, text or a photo). In 5–30 seconds it lists which concepts they cover and on which slide or page; **My plan** then shows "Your notes · slide N" before the textbook links.
    - **Class view**: a simulated class, with cells hidden below 5 students. **Review map**: "How this map was built". **Share**: QR code.
+   - **Review map → Delete course…** (owner only): it lists what goes, and the button stays off until you type the
+     course number (`DEMO 410`). Deleting removes the course for everyone; old links then say it was deleted.
    - **Review map → Ask for changes**: type `Logarithms aren't needed in this course.` and add a text file with a sample
      question (`1. …` then `A)`–`D)` options and `Answer: B`). It proposes removing the concept and copying the question;
      untick one, **Apply**, and the map and plan change; students' answers stay.
