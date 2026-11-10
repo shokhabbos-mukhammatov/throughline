@@ -17,7 +17,7 @@ import threading
 import httpx
 
 from .models import BulletinEntry
-from .textutil import course_code
+from .textutil import course_code, prereq_groups
 
 log = logging.getLogger(__name__)
 
@@ -89,7 +89,7 @@ def parse_subject_page(html: str, subject: str) -> dict[str, BulletinEntry]:
         description = _strip(desc_html.group(1)) if desc_html else ""
         if pm and description:
             description = re.sub(r"Prerequisites?:\s*" + re.escape(pm.group(1).strip()) + r"\.?", "", description).strip(" .")
-        codes = [f"{a} {b}" for a, b in _CODE.findall(prereq) if f"{a} {b}" != code]
+        codes = [c for g in prereq_groups(prereq, [f"{a} {b}" for a, b in _CODE.findall(prereq)]) for c in g if c != code]
         entries[code] = BulletinEntry(
             code=code, title=title, description=description[:900], prerequisites=prereq,
             prereq_codes=list(dict.fromkeys(codes)), source="SF State Bulletin (live)",

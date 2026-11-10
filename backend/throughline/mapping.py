@@ -41,14 +41,14 @@ from .materials import match_concepts
 from .models import AiPolicy, BankQuestion, Concept, Course, CourseCoverage, Edge, Evidence, Requirement, Resource, StageTrace, Topic
 from .retrieval import EvidenceIndex, build_corpus, quote_supported
 from .seed import library
-from .textutil import contains_phrase, course_code, normalize_name, tidy_groups
+from .textutil import contains_phrase, course_code, merge_groups, normalize_name, tidy_groups
 
 log = logging.getLogger(__name__)
 
 ITEMS_PER_CALL = 6
 CONCEPTS_PER_CALL = 3
 COVERAGE_PER_CALL = 6
-PASSAGES_PER_COURSE = 3  # shown to the judge for one concept and one prerequisite course
+PASSAGES_PER_COURSE = 5  # shown to the judge for one concept and one prerequisite course
 QUESTIONS_PER_SOLVE = 12
 PARALLEL = 4
 JOBS = ("read_document", "parse_syllabus", "map_prerequisites", "embed", "judge_same", "judge_coverage", "write_packs", "solve",
@@ -168,6 +168,34 @@ def apply_parse(course: Course, parsed: SyllabusParse) -> list[Topic]:
                             kind=it.kind, estimated=it.estimated or (it.date is None and d is not None)))
     topics.sort(key=lambda t: (t.week, t.date or date.max, t.kind))
     return topics
+
+
+def reconcile_requirements(course: Course) -> None:
+    """The syllabus and the Bulletin can each list only part of the prerequisites ("DS 212 or equivalent" in the
+    syllabus; "DS 212/ECON 212 or equivalent; ISYS 263" in the Bulletin). Students must meet both, so keep both."""
+    own = course_code(course.code)
+    root = next((b for b in course.bulletin if course_code(b.code) == own), None)
+    groups = tidy_groups(course.prereq_groups, course.official_prereqs, course.prereq_text)
+    if root is not None:
+        groups = merge_groups(groups, root.groups())
+    course.prereq_groups = [[c for c in g if c != own] for g in groups if any(c != own for c in g)]
+    course.official_prereqs = list(dict.fromkeys(c for g in course.prereq_groups for c in g))
+
+
+def adopt_owner_syllabi(ctx: Ctx, course: Course) -> list[str]:
+    """Syllabi of listed prerequisites that the course's owner added as courses they took: evidence for the whole class."""
+    from .models import PrereqDoc
+
+    have = {course_code(d.code) for d in course.prereq_docs}
+    adopted = []
+    for p in ctx.course(course.id).prior_courses.list(student=course.owner):
+        code = course_code(p.code)
+        if p.chunks and not p.school and code in course.official_prereqs and code not in have:
+            text = "\n".join(line for ch in p.chunks for line in ch.text.split(" | "))
+            course.prereq_docs.append(PrereqDoc(code=code, text=text))
+            have.add(code)
+            adopted.append(code)
+    return adopted
 
 
 # Stages 3-4: map with self-consistency, resolve, build the graph
@@ -596,11 +624,8 @@ def build_course(ctx: Ctx, course_id: str, hint_code: str = "") -> None:
 
         with run.stage("Checking the SF State Bulletin") as st:
             course.bulletin = bulletin.chain(course.code, course.official_prereqs, live=ctx.settings.bulletin_live)
-            statement = course.prereq_text
-            if not course.official_prereqs and course.bulletin:
-                course.official_prereqs = course.bulletin[0].prereq_codes
-                statement = course.bulletin[0].prerequisites
-            course.prereq_groups = tidy_groups(course.prereq_groups, course.official_prereqs, statement)
+            course.prereq_groups = tidy_groups(course.prereq_groups, course.official_prereqs, course.prereq_text)
+            reconcile_requirements(course)
             st.notes = [f"{b.code} ({b.source})" for b in course.bulletin] or ["no entries found"]
             if course.prereq_groups:
                 st.notes.append("requires " + " and ".join(" or ".join(g) for g in course.prereq_groups))
@@ -616,7 +641,8 @@ def build_course(ctx: Ctx, course_id: str, hint_code: str = "") -> None:
                 raise BuildFailed("No prerequisite knowledge was found for this syllabus.")
 
         with run.stage("Checking what prerequisites taught") as st:
-            st.notes = coverage_notes(check_coverage(run, concepts))
+            adopted = adopt_owner_syllabi(ctx, course)
+            st.notes = coverage_notes(check_coverage(run, concepts)) + ([f"your syllabi used for the class: {', '.join(adopted)}"] if adopted else [])
 
         with run.stage("Writing study material") as st:
             questions = write_packs(run, concepts, reqs, edges)
@@ -663,7 +689,15 @@ def recheck_coverage(ctx: Ctx, course_id: str) -> None:
         with ctx.lock(course_id):
             concepts = repo.concepts.list()
             with run.stage("Re-checking what prerequisites taught") as st:
+                before = list(course.official_prereqs)
+                if not course.demo:
+                    reconcile_requirements(course)
+                adopted = adopt_owner_syllabi(ctx, course)
                 st.notes = coverage_notes(check_coverage(run, concepts))
+                if course.official_prereqs != before:
+                    st.notes.append("requires " + " and ".join(" or ".join(g) for g in course.prereq_groups))
+                if adopted:
+                    st.notes.append(f"your syllabi used for the class: {', '.join(adopted)}")
             repo.concepts.put_many(concepts)
         course.build.status, course.build.stage, course.build.error = "ready", "Ready", None
     except Exception as exc:

@@ -121,8 +121,11 @@ def prereq_groups(text: str, codes: list[str]) -> list[list[str]]:
     'CSC 220, CSC 230, and MATH 227'          -> [['CSC 220'], ['CSC 230'], ['MATH 227']]
     Only the given codes count; one the statement doesn't mention becomes its own requirement.
     """
-    wanted = list(dict.fromkeys(course_code(c) for c in codes if c and c.strip()))
     text = text or ""
+    # "DS 311 and/or DS 312 recommended": a recommendation isn't a requirement
+    advised = {f"{m.group(1).upper()} {m.group(2).upper()}" for clause in re.split(r"[.;]", text) if re.search(r"(?i)recommend", clause)
+               for m in _ANY_CODE.finditer(clause)}
+    wanted = [c for c in dict.fromkeys(course_code(c) for c in codes if c and c.strip()) if c not in advised]
     found: list[tuple[str, int, int]] = []
     for m in _ANY_CODE.finditer(text):
         code = f"{m.group(1).upper()} {m.group(2).upper()}"
@@ -157,6 +160,19 @@ def prereq_groups(text: str, codes: list[str]) -> list[list[str]]:
     return groups + [[c] for c in wanted if c not in seen]
 
 
+def merge_groups(first: list[list[str]], second: list[list[str]]) -> list[list[str]]:
+    """Requirements from two records of the same course (its syllabus and the Bulletin): a requirement in both becomes
+    one with the alternatives of both; one in either record is kept."""
+    out = [list(g) for g in first]
+    for g in second:
+        same = next((o for o in out if set(o) & set(g)), None)
+        if same is None:
+            out.append(list(g))
+        else:
+            same.extend(c for c in g if c not in same)
+    return out
+
+
 def tidy_groups(groups: list[list[str]], codes: list[str], text: str = "") -> list[list[str]]:
     """Clean proposed groups: listed codes only, each once; a listed code left out is placed by the statement's wording."""
     wanted = list(dict.fromkeys(course_code(c) for c in codes if c and c.strip()))
@@ -177,6 +193,8 @@ _EMAIL = re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
 _PHONE = re.compile(r"(?:\(\d{3}\)\s*|\b\d{3}[-.\s])\d{3}[-.\s]\d{4}\b")
 _URL_WITH_ID = re.compile(r"https?://\S*(?:instructure\.com|zoom\.us|discord\.(?:gg|com))\S*", re.IGNORECASE)
 _TITLED_NAME = re.compile(r"\b(Dr|Prof|Professor|Mr|Ms|Mrs|Mx)\.?\s+[A-Z][\w'-]+(?:\s+[A-Z][\w'-]+)?")
+# "Instructor Contact" blocks often put the name on its own "Name:" line
+_NAME_LINE = re.compile(r"^(\s*(?:Full\s+)?Name\s*[:\-]\s*)(\S.*)$", re.IGNORECASE | re.MULTILINE)
 _ROLE_LINE = re.compile(r"^(\s*(?:Instructor|Professor|Teacher|Lecturer|TA|Teaching Assistant)s?\s*[:\-]\s*)(.+)$", re.IGNORECASE | re.MULTILINE)
 
 
@@ -185,6 +203,7 @@ def redact(text: str) -> str:
     text = _PHONE.sub("[phone]", text)
     text = _URL_WITH_ID.sub("[link]", text)
     text = _TITLED_NAME.sub(lambda m: f"{m.group(1)}. [name]", text)
+    text = _NAME_LINE.sub(lambda m: m.group(1) + _strip_name(m.group(2)), text)
     return _ROLE_LINE.sub(lambda m: m.group(1) + _strip_name(m.group(2)), text)
 
 

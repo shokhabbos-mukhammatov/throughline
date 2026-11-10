@@ -117,6 +117,22 @@ function PrereqUpload({ course }: { course: CourseDetail }) {
         }}>{busy ? <Spinner /> : null} Add and re-check</button>
       </div>
       {msg && <p className="small">{msg}</p>}
+      <div className="form-row">
+        <button className="btn ghost small" disabled={busy} onClick={async () => {
+          setBusy(true);
+          setMsg(null);
+          try {
+            await api.recheck(course.id);
+            setMsg("Re-checking: the prerequisites are read again from the syllabus and the Bulletin, then each one's coverage. The map and students' answers stay.");
+            setTimeout(() => { qc.invalidateQueries({ queryKey: ["review", course.id] }); qc.invalidateQueries({ queryKey: ["course", course.id] }); }, 1500);
+          } catch (e) {
+            setMsg((e as Error).message);
+          } finally {
+            setBusy(false);
+          }
+        }}>Re-check prerequisites and coverage</button>
+        <span className="small muted">Requires: {course.prereq_groups.map((g) => g.join(" or ")).join("; ") || "none listed"}</span>
+      </div>
     </div>
   );
 }

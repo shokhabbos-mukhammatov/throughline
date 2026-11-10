@@ -295,3 +295,75 @@ def test_a_weak_match_does_not_outweigh_the_instructor_saying_it_is_not_needed(c
     repo.concepts.put_many(concepts)
     view, _ = seen_by(ctx, course, repo, chain.name, met={"DEMO 212": "took"})
     assert view["coverage"] == "missing" and view["covered_by"] is None
+
+
+def test_the_bulletin_adds_requirements_the_syllabus_leaves_out(ctx):
+    """A real case: the syllabus says "DS 212 or equivalent"; the Bulletin says "DS 212/ECON 212 or equivalent; ISYS 263"."""
+    text = "DS 612 Data Mining  Fall 2026\nPrerequisite: DS 212 or equivalent with a grade of C- or better.\n" + WEEKS
+    course = Course(owner="me", code="DS 612", syllabus_text=redact(text))
+    ctx.catalog.put(course)
+    build_course(ctx, course.id, "DS 612")
+    course = ctx.catalog.get(course.id)
+    assert course.build.status == "ready", course.build.error
+    assert course.prereq_groups == [["DS 212", "ECON 212"], ["ISYS 263"]]
+    assert "DS 311" not in course.official_prereqs and "DS 312" not in course.official_prereqs, "recommended, not required"
+
+
+def test_recommended_courses_are_not_requirements():
+    assert prereq_groups("DS 212/ECON 212 or equivalent; ISYS 263. DS 311 and/or DS 312 recommended.",
+                         ["DS 212", "ECON 212", "ISYS 263", "DS 311", "DS 312"]) == [["DS 212", "ECON 212"], ["ISYS 263"]]
+    html = """<div class="courseblock"><p class="courseblocktitle"><strong>DS 612 Data Mining (Units: 3)</strong></p>
+    <p class="courseblockdesc">Prerequisites: DS 212/ECON 212 or equivalent; ISYS 263. DS 311 and/or DS 312 recommended. Mining data.</p></div>"""
+    assert bulletin.parse_subject_page(html, "DS")["DS 612"].prereq_codes == ["DS 212", "ECON 212", "ISYS 263"]
+
+
+def test_a_recheck_fixes_an_older_course_and_uses_the_owners_syllabi(ctx):
+    from throughline.background import syllabus_chunks
+    from throughline.mapping import recheck_coverage
+
+    text = "DS 612 Data Mining  Fall 2026\nPrerequisite: DS 212 or equivalent.\n" + WEEKS
+    course = Course(owner="me", code="DS 612", syllabus_text=redact(text))
+    ctx.catalog.put(course)
+    build_course(ctx, course.id, "DS 612")
+    course = ctx.catalog.get(course.id)
+    course.official_prereqs, course.prereq_groups = ["DS 212"], [["DS 212"]]  # as built before this fix
+    ctx.catalog.put(course)
+    repo = ctx.course(course.id)
+    isys = "ISYS 263 Information Systems\nWeek 4: Python programming basics and Excel formulas\nWeek 6: SQL queries and relational databases"
+    repo.prior_courses.put(PriorCourse(student="me", code="ISYS 263", source="pasted text", chunks=syllabus_chunks(isys)))
+    repo.prior_courses.put(PriorCourse(student="someone-else", code="DS 212", source="pasted text", chunks=syllabus_chunks(isys)))
+
+    recheck_coverage(ctx, course.id)
+    course = ctx.catalog.get(course.id)
+    assert course.prereq_groups == [["DS 212", "ECON 212"], ["ISYS 263"]]
+    assert [d.code for d in course.prereq_docs] == ["ISYS 263"], "only the owner's syllabi become class evidence"
+    stage = course.build.trace[-1]
+    assert any("ISYS 263" in n for n in stage.notes) and any(n.startswith("requires") for n in stage.notes)
+    assert all(any(r.code == "ISYS 263" for r in c.by_course) for c in repo.concepts.list())
+
+
+def test_the_owner_adding_a_listed_syllabus_in_setup_rechecks_for_the_class():
+    owner = {"X-Demo-User": "owner-b9"}
+    course = client.post("/api/demo/sample", headers=owner).json()
+    r = client.post(f"/api/courses/{course['id']}/background", headers=owner,
+                    data={"code": "DEMO 212", "replaces": "DEMO 212", "text": sample.DEMO_212_SYLLABUS})
+    assert r.status_code == 200
+    for _ in range(100):
+        stored = api.services.catalog.get(course["id"])
+        if stored.build.status == "ready" and stored.build.trace[-1].stage.startswith("Re-checking"):
+            break
+        import time
+        time.sleep(0.02)
+    assert stored.build.trace[-1].stage == "Re-checking what prerequisites taught"
+    assert client.post(f"/api/courses/{course['id']}/recheck", headers={"X-Demo-User": "not-owner"}).status_code == 403
+    assert client.post(f"/api/courses/{course['id']}/recheck", headers=owner).status_code == 200
+
+
+def test_a_prerequisites_own_prerequisite_line_is_not_evidence_it_teaches_that(ctx):
+    from throughline.models import PrereqDoc
+    from throughline.retrieval import build_corpus
+
+    course = Course(owner="me", code="DS 612", official_prereqs=["DS 212"], prereq_docs=[PrereqDoc(
+        code="DS 212", text="Prerequisites: C- or better in MATH 110 or an equivalent differential calculus course\nWeek 3: Probability rules")])
+    texts = " ".join(p.text for p in build_corpus(ctx.store, course))
+    assert "calculus" not in texts and "Probability rules" in texts
