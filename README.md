@@ -36,7 +36,8 @@ Nobody sees the gap until the student is already behind.
 3. **Checks the student in at most 8 questions.** Each question is the one expected to tell us the most; one answer also moves the concepts around it.
 4. **Builds a pace plan.** Foundations come first, everything is finished before the class that needs it, and it fits the student's weekly time. If it can't fit, the plan says what is short and by how many minutes, and points to tutoring.
 5. **Says where to learn each thing.** First the student's own notes or slides from the prerequisite, or from the course they took instead, even at another university (the exact page or slide), then a free open-textbook section, a refresher and practice.
-6. **Class view (optional).** Classmates join with a code or QR. The instructor sees aggregates only, and only once 5 or more students have answered.
+6. **Lets the course owner correct the map.** If the AI got a concept or a week wrong, whoever added the course writes what's wrong and can add the course's own files: a review guide, a study guide, sample exam or quiz questions. Gemini proposes specific changes (add, remove or correct a concept, change which weeks use it, copy questions out of the files); code checks each one (real concepts and weeks only, every quote found in the file, answer keys re-solved blind), and nothing changes for students until the owner ticks which changes to apply. Students' answers are kept.
+7. **Class view (optional).** Classmates join with a code or QR. The instructor sees aggregates only, and only once 5 or more students have answered.
 
 | The pace plan | The quick check |
 |---|---|

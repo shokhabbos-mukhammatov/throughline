@@ -20,7 +20,7 @@ def gemini():
 
 
 @pytest.mark.parametrize("schema", [schemas.SyllabusParse, schemas.MappingResult, schemas.ConceptPacks, schemas.Solutions,
-                                    schemas.SameConceptJudgments, schemas.CoverageJudgments])
+                                    schemas.SameConceptJudgments, schemas.CoverageJudgments, schemas.RevisionPlan])
 def test_response_schemas_convert(gemini, schema):
     assert _transformers.t_schema(gemini.client, schema) is not None
     cfg = gemini.config(schema=schema, system="x")

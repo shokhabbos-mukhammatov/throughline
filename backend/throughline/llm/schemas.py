@@ -136,3 +136,42 @@ class CoverageJudgment(BaseModel):
 
 class CoverageJudgments(BaseModel):
     judgments: list[CoverageJudgment]
+
+
+class NeedRef(BaseModel):
+    item_id: str = Field(description="A timeline item_id from the course timeline.")
+    importance: Literal["essential", "helpful"] = "essential"
+    how_used: str = Field(default="", description="One concrete sentence on how that item uses the concept.")
+
+
+class MapChange(BaseModel):
+    action: Literal["add", "remove", "edit", "needs"] = Field(
+        description="add a missing concept; remove one the course doesn't need; edit a name, summary or depth; "
+        "needs: change which timeline items use an existing concept.")
+    concept_id: str | None = Field(default=None, description="For remove, edit and needs: the id of an existing concept.")
+    name: str = Field(default="", description="For add: canonical Title Case name. For edit: the new name, or empty to keep it.")
+    summary: str = Field(default="", description="For add or edit: one sentence a student could use as a definition.")
+    depth: str = Field(default="", description="For add or edit: how deep this course needs it.")
+    add_needs: list[NeedRef] = Field(default_factory=list, description="For add and needs: timeline items that use it.")
+    remove_needs: list[str] = Field(default_factory=list, description="For needs: item_ids that do not actually use it.")
+    builds_on: list[str] = Field(default_factory=list, description="For add: ids of existing concepts it directly builds on.")
+    reason: str = Field(description="One sentence: why, in terms of the request or the files.")
+    source: str | None = Field(default=None, description="Label of the file passage relied on, like f1.3, or null if only the request.")
+    quote: str = Field(default="", description="Exact words from that passage, at most 30.")
+
+
+class SourceQuestion(BaseModel):
+    concept: str = Field(description="Id of an existing concept, or the exact name of a concept you add.")
+    prompt: str
+    choices: list[str] = Field(description="Exactly 4 options, as in the file.")
+    correct_index: int = Field(description="0-based index of the correct option: the file's answer key if it has one, else your own.")
+    key_from_file: bool = Field(default=False, description="True only when the file itself gives the answer.")
+    explanation: str = Field(default="", description="2-3 sentences on why the correct option is right.")
+    source: str | None = Field(default=None, description="Label of the passage the question is from, like f2.1.")
+
+
+class RevisionPlan(BaseModel):
+    summary: str = Field(description="One or two sentences: what the owner asked for and what you propose.")
+    changes: list[MapChange] = Field(default_factory=list)
+    questions: list[SourceQuestion] = Field(default_factory=list)
+    not_done: list[str] = Field(default_factory=list, description="Parts of the request you could not act on, and why.")

@@ -47,6 +47,10 @@ the workflow cards light up in order while on screen; "Built with" is two loopin
 school, is a plain card with two fields and its syllabus as a file or pasted text. Saved courses are slips that quote
 what their syllabus teaches.
 
+**Asking for changes** (Review map, owner only) is the sticky note of that screen: the request and the files from the course.
+The proposal under it is a checklist on a slip, grouped by kind of change; each line shows its reason and, when a file backs
+it, the file and location with a tick when the quote was found there. Unticked lines are greyed, never hidden.
+
 Week headings in the plan are written on a short strip of tape. List rows are ruled like notebook paper (`--ruling`).
 
 ## The board (prerequisite map)

@@ -20,6 +20,7 @@ from pydantic import BaseModel, Field
 
 from . import background as bg
 from . import bulletin
+from . import revise
 from .assessment import NotFound, adaptive_next, answer, study
 from .auth import Identity, identify, require_account
 from .config import settings
@@ -30,7 +31,7 @@ from .llm import make_engine
 from .graph import depths
 from .jobs import JOB_PATH, make_queue, run_job, verify_task_token
 from .materials import build_material
-from .models import Course, Enrollment, Material, PrereqDoc, PriorCourse
+from .models import Course, Enrollment, Material, PrereqDoc, PriorCourse, Revision
 from .observability import request_id, setup_logging, trace
 from .readiness import Snapshot, concept_view, plan, timeline
 from .seed import sample
@@ -117,7 +118,7 @@ def _course(course_id: str) -> Course:
 def _owned(course_id: str, uid: str) -> Course:
     course = _course(course_id)
     if course.owner != uid:
-        raise HTTPException(403, "Only the person who added this course can see the class view")
+        raise HTTPException(403, "Only the person who added this course can do that")
     return course
 
 
@@ -686,6 +687,100 @@ def patch_concept(course_id: str, concept_id: str, body: ConceptPatch, uid: str 
         c.removed = body.removed
     repo.concepts.put(c)
     return c.model_dump(mode="json")
+
+
+def _revision_view(course_id: str, r: Revision) -> dict:
+    repo = services.course(course_id)
+    names = {c.id: c.name for c in repo.concepts.list()}
+    weeks = {t.id: (t.week, t.title) for t in repo.topics.list()}
+    return revise.view(r, names, weeks)
+
+
+def _owned_revision(course_id: str, revision_id: str, uid: str) -> tuple[Course, Revision]:
+    course = _owned(course_id, uid)
+    r = services.course(course.id).revisions.get(revision_id)
+    if r is None:
+        raise HTTPException(404, "Revision not found")
+    return course, r
+
+
+@app.get("/api/courses/{course_id}/revisions")
+def list_revisions(course_id: str, uid: str = Depends(current_uid)):
+    """Requests to correct the map, newest first. Only the person who added the course sees them."""
+    course = _owned(course_id, uid)
+    found = sorted(services.course(course.id).revisions.list(), key=lambda r: r.created_at, reverse=True)
+    return [_revision_view(course.id, r) for r in found[:20]]
+
+
+@app.post("/api/courses/{course_id}/revisions")
+async def ask_for_revision(course_id: str, prompt: str = Form(""), files: list[UploadFile] | None = File(None),
+                           uid: str = Depends(account_uid)):
+    """Ask for the map to be corrected: say what's wrong, and add files from the course that show it (a review guide,
+    a study guide, sample exam or quiz questions). Changes are proposed for review; nothing changes until they're applied."""
+    course = _owned(course_id, uid)
+    if course.build.status != "ready":
+        raise HTTPException(409, "Wait until the map is ready, then ask for changes.")
+    uploads = files or []
+    if len(uploads) > revise.MAX_FILES:
+        raise HTTPException(400, f"Add up to {revise.MAX_FILES} files at a time.")
+    if len(prompt.strip()) < 8 and not uploads:
+        raise HTTPException(400, "Say what should change, add a file from the course, or both.")
+    repo = services.course(course.id)
+    if any(r.status in ("queued", "running") for r in repo.revisions.list()):
+        raise HTTPException(409, "A request is already being worked on. Wait for it to finish.")
+    _allow_build(uid)
+    read = []
+    for i, f in enumerate(uploads, start=1):
+        data = await f.read()
+        if len(data) > settings.max_upload_mb * 1024 * 1024:
+            raise HTTPException(413, f"{f.filename} is larger than {settings.max_upload_mb} MB")
+        try:
+            rf = await run_in_threadpool(revise.read_file, engine, f"f{i}", f.filename or f"file {i}", data,
+                                         guess_mime(f.filename or "", f.content_type))
+        except UnsupportedFile as exc:
+            raise HTTPException(415, f"{f.filename}: {exc}") from exc
+        if not rf.chunks:
+            raise HTTPException(422, f"No text found in {f.filename}. If it's a scan, try a clearer photo or a PDF.")
+        read.append(rf)
+    r = Revision(owner=uid, prompt=prompt.strip()[:4000] or "Use the files to correct the map.", files=read)
+    repo.revisions.put(r)
+    _submit("revise", course.id, r.id)
+    return _revision_view(course.id, r)
+
+
+@app.get("/api/courses/{course_id}/revisions/{revision_id}")
+def get_revision(course_id: str, revision_id: str, uid: str = Depends(current_uid)):
+    course, r = _owned_revision(course_id, revision_id, uid)
+    return _revision_view(course.id, r)
+
+
+class ApplyBody(BaseModel):
+    change_ids: list[str] = Field(default_factory=list, max_length=200)
+
+
+@app.post("/api/courses/{course_id}/revisions/{revision_id}/apply")
+def apply_revision(course_id: str, revision_id: str, body: ApplyBody, uid: str = Depends(current_uid)):
+    """Apply the chosen changes to the map. Students' answers are kept."""
+    course, r = _owned_revision(course_id, revision_id, uid)
+    if r.status != "ready":
+        raise HTTPException(409, "This request isn't waiting to be applied.")
+    known = {ch.id for ch in r.changes}
+    if not body.change_ids or not set(body.change_ids) <= known:
+        raise HTTPException(400, "Choose at least one of the proposed changes.")
+    result = revise.apply(services, course.id, r, body.change_ids)
+    if result["added_concepts"] and services.course(course.id).prior_courses.list() + services.course(course.id).materials.list():
+        _submit("students", course.id)  # students' own syllabi and notes are compared with the new concepts
+    return {**result, "revision": _revision_view(course.id, r)}
+
+
+@app.post("/api/courses/{course_id}/revisions/{revision_id}/discard")
+def discard_revision(course_id: str, revision_id: str, uid: str = Depends(current_uid)):
+    course, r = _owned_revision(course_id, revision_id, uid)
+    if r.status not in ("ready", "error"):
+        raise HTTPException(409, "Only a finished request can be discarded.")
+    r.status = "discarded"
+    services.course(course.id).revisions.put(r)
+    return _revision_view(course.id, r)
 
 
 @app.post("/api/courses/{course_id}/rebuild")

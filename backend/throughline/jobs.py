@@ -16,7 +16,8 @@ from typing import Callable
 
 from .config import Settings
 from .ctx import Ctx
-from .mapping import build_course, recheck_coverage
+from .mapping import build_course, recheck_coverage, rematch_students
+from .revise import propose
 
 log = logging.getLogger(__name__)
 
@@ -28,6 +29,10 @@ def run_job(ctx: Ctx, kind: str, course_id: str, code: str = "") -> None:
         build_course(ctx, course_id, code)
     elif kind == "recheck":
         recheck_coverage(ctx, course_id)
+    elif kind == "revise":
+        propose(ctx, course_id, code)  # code carries the revision id
+    elif kind == "students":
+        rematch_students(ctx, course_id)
     else:
         raise ValueError(f"unknown job kind {kind!r}")
 

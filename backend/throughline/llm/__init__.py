@@ -11,9 +11,11 @@ from .base import (
     EngineUnavailable,
     EvidencePassage,
     ItemCard,
+    MapConceptCard,
     PairCard,
     QuestionCard,
     ResourceCard,
+    RevisionContext,
 )
 
 log = logging.getLogger(__name__)
@@ -38,8 +40,10 @@ __all__ = [
     "EngineUnavailable",
     "EvidencePassage",
     "ItemCard",
+    "MapConceptCard",
     "PairCard",
     "QuestionCard",
     "ResourceCard",
+    "RevisionContext",
     "make_engine",
 ]

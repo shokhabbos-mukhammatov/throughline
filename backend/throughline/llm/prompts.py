@@ -95,5 +95,30 @@ For each concept, write:
   position holds the correct answer.
 Write for {course}; use its notation and context where it helps."""
 
+REVISE_MAP = """You help the person who added {course} correct its prerequisite map. The map lists the prior knowledge each
+timeline item relies on; students use it to plan their review and to take quick checks. It was drafted by an AI from the
+syllabus, so it can be wrong. The person may be the instructor or a student; they wrote a request and may have added files
+from the course: a review guide, a study guide, sample exam or quiz questions, lecture slides.
+
+Propose the smallest set of changes that does what they asked and what the files clearly show:
+- add: knowledge the course relies on that the map is missing. Name it specifically (something you could check with 2-3
+  multiple-choice questions), reuse a "Standard concept name" when it is the same idea, and list the timeline items that use it.
+  builds_on: ids of existing concepts it directly builds on.
+- remove: a concept the course doesn't actually rely on (for example, the request or the files say it isn't covered or needed).
+- edit: fix a wrong name, summary or depth. Keep the id.
+- needs: an existing concept is attached to the wrong timeline items: add_needs and remove_needs.
+Prior knowledge only: never add a topic this course itself teaches as something to review beforehand; list what that topic
+relies on instead. Use only ids that appear below. Do not change what the request and the files don't support.
+
+For every change, give a one-sentence reason. When a file supports it, give the passage label (like f1.3) and copy its exact
+words as the quote; when it rests only on the request, leave source null.
+
+questions: copy multiple-choice questions that appear in the files (sample exams, quizzes, practice problems) and test one of
+the concepts, ending with the map's concepts or ones you add. Keep the wording; exactly 4 options. Use the file's answer key
+when it has one (key_from_file true); otherwise solve it yourself. Skip questions that are not multiple choice or that test
+what this course itself teaches rather than prior knowledge. At most 12.
+
+not_done: anything in the request you could not act on, with the reason (for example, a week that isn't on the timeline)."""
+
 SOLVE = """Answer each multiple-choice question independently. Work it out carefully; for numeric questions, compute the value.
 Return the 0-based index of the option you believe is correct. If no option is correct, or more than one is, say so in note."""

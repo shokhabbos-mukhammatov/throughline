@@ -357,6 +357,61 @@ export interface ClassView {
   concerns: ClassRow[];
 }
 
+export type ChangeKind = "add_concept" | "remove_concept" | "edit_concept" | "add_need" | "remove_need" | "add_question";
+
+export interface WeekRef { topic_id: string; week: number; title: string }
+
+export interface RevisionQuestion {
+  prompt: string;
+  choices: string[];
+  correct_index: number;
+  explanation: string;
+  verification: "agreed" | "disagreed" | "unverified";
+  status: "draft" | "approved" | "rejected";
+}
+
+/** One change proposed for the map, already checked by code. */
+export interface MapChangeView {
+  id: string;
+  kind: ChangeKind;
+  concept_id: string | null;
+  name: string;
+  current_name: string;
+  summary: string;
+  depth: string;
+  need: WeekRef | null;
+  importance: string;
+  how_used: string;
+  reason: string;
+  source: string;
+  quote: string;
+  quote_ok: boolean;
+  selected: boolean;
+  note: string;
+  needs: WeekRef[];
+  builds_on: string[];
+  coverage: Coverage | null;
+  covered_by: string | null;
+  questions: RevisionQuestion[];
+}
+
+/** The course owner's request to correct the map, with what was proposed. */
+export interface RevisionView {
+  id: string;
+  prompt: string;
+  status: "queued" | "running" | "ready" | "applied" | "discarded" | "error";
+  stage: string;
+  error: string;
+  summary: string;
+  not_done: string[];
+  created_at: string;
+  applied_at: string | null;
+  applied: string[];
+  files: { filename: string; kind: string; parts: number }[];
+  calls: number;
+  changes: MapChangeView[];
+}
+
 /* ---------- identity: an anonymous id kept in this browser ---------- */
 
 const UID_KEY = "throughline.uid";
@@ -482,6 +537,18 @@ export const api = {
     req<ReviewQuestion>(`/api/courses/${id}/questions/${qid}`, { method: "PATCH", body: json(body) }),
   patchConcept: (id: string, cid: string, body: { removed: boolean }) =>
     req<ReviewConcept>(`/api/courses/${id}/concepts/${cid}`, { method: "PATCH", body: json(body) }),
+  revisions: (id: string) => req<RevisionView[]>(`/api/courses/${id}/revisions`),
+  revision: (id: string, rid: string) => req<RevisionView>(`/api/courses/${id}/revisions/${rid}`),
+  askForRevision: (id: string, prompt: string, files: File[]) => {
+    const form = new FormData();
+    form.set("prompt", prompt);
+    files.forEach((f) => form.append("files", f));
+    return req<RevisionView>(`/api/courses/${id}/revisions`, { method: "POST", body: form });
+  },
+  applyRevision: (id: string, rid: string, changeIds: string[]) =>
+    req<{ applied: number; skipped: string[]; revision: RevisionView }>(`/api/courses/${id}/revisions/${rid}/apply`,
+      { method: "POST", body: json({ change_ids: changeIds }) }),
+  discardRevision: (id: string, rid: string) => req<RevisionView>(`/api/courses/${id}/revisions/${rid}/discard`, { method: "POST" }),
   rebuild: (id: string) => req<CoursePublic>(`/api/courses/${id}/rebuild`, { method: "POST" }),
   classView: (id: string, includeSimulated: boolean) => req<ClassView>(`/api/courses/${id}/class?include_simulated=${includeSimulated}`),
 };

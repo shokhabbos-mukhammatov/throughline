@@ -15,8 +15,8 @@ from pydantic import BaseModel
 from ..config import Settings
 from ..seed import library
 from . import prompts
-from .base import ConceptCard, CourseContext, CoverageRequest, ItemCard, PairCard, QuestionCard, ResourceCard
-from .schemas import ConceptPacks, CoverageJudgments, MappingResult, SameConceptJudgments, Solutions, SyllabusParse
+from .base import ConceptCard, CourseContext, CoverageRequest, ItemCard, PairCard, QuestionCard, ResourceCard, RevisionContext
+from .schemas import ConceptPacks, CoverageJudgments, MappingResult, RevisionPlan, SameConceptJudgments, Solutions, SyllabusParse
 
 log = logging.getLogger(__name__)
 T = TypeVar("T", bound=BaseModel)
@@ -156,6 +156,19 @@ class GeminiEngine:
             blocks.append(f"concept_id={c.id} | {c.name}: {c.summary}\n  depth needed: {c.depth or 'standard'}\n  used for: {uses}")
         contents = "Resource catalog:\n" + cat + "\n\nConcepts:\n" + "\n".join(blocks)
         return self._structured(contents, ConceptPacks, prompts.WRITE_PACKS.format(course=course_label))
+
+    def revise_map(self, ctx: RevisionContext) -> RevisionPlan:
+        items = "\n".join(f"- item_id={it.id} | Week {it.week}" + (f" ({it.date})" if it.date else "") + f" | {it.title}"
+                          + (f" — {it.details}" if it.details else "") for it in ctx.items)
+        concepts = "\n".join(
+            f"- id={c.id} | {c.name}: {c.summary}" + (f" | depth: {c.depth}" if c.depth else "")
+            + f" | used in: {', '.join(c.needed_in) or 'nothing directly (a foundation)'}"
+            + (f" | builds on: {', '.join(c.builds_on)}" if c.builds_on else "") for c in ctx.concepts)
+        files = "\n".join(f"[{p.label}] ({p.source}) {p.text}" for p in ctx.passages) or "(no files)"
+        contents = (f"Request from the course owner:\n{ctx.request}\n\nTimeline:\n{items}\n\nCurrent map:\n{concepts or '(empty)'}"
+                    + "\n\nStandard concept names:\n" + "\n".join(f"- {c.name}" for c in library.CONCEPTS)
+                    + f"\n\nFiles the owner added:\n{files[:150_000]}")
+        return self._structured(contents, RevisionPlan, prompts.REVISE_MAP.format(course=ctx.label), thinking=self.s.map_thinking_level)
 
     def solve(self, questions: list[QuestionCard]) -> Solutions:
         blocks = []

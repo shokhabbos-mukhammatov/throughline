@@ -951,3 +951,32 @@ mark.hl, .late { color: inherit; padding-inline: 0.12em; -webkit-box-decoration-
   .prq { padding: 10px 12px; }
   .prq-or { flex-basis: 100%; height: 0; overflow: hidden; }
 }
+
+/* ---------- asking for changes to the map: a request slip, then the proposal as a checklist ---------- */
+.rv { display: flex; flex-direction: column; gap: 14px; }
+.rv-ask { display: flex; flex-direction: column; gap: 8px; padding: 14px 16px; background: var(--grain) var(--note); border-radius: 1px; box-shadow: var(--lift); }
+.rv-ask textarea { background: var(--surface); }
+.rv-files li { display: flex; align-items: center; gap: 8px; font-size: 0.9rem; }
+.rv-files svg { vertical-align: -2px; }
+.rv-item { display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; background: var(--grain) var(--surface-2); border-radius: 1px; box-shadow: var(--lift); }
+.rv-prompt { font-style: italic; }
+.rv-proposal { display: flex; flex-direction: column; gap: 12px; }
+.rv-group { display: flex; flex-direction: column; gap: 6px; }
+.rv-group > ul { display: flex; flex-direction: column; gap: 0; }
+.rv-change { display: flex; flex-direction: column; gap: 4px; padding: 9px 0; border-top: 1px solid var(--ruling); }
+.rv-pick { display: flex; gap: 10px; align-items: flex-start; cursor: pointer; }
+.rv-pick input { margin-top: 3px; flex: none; width: 18px; height: 18px; accent-color: var(--accent); }
+.rv-change:not(.on) .rv-what { color: var(--ink-3); }
+.rv-why { display: flex; flex-direction: column; gap: 2px; padding-left: 28px; color: var(--ink-2); }
+.rv-src svg { width: 13px; height: 13px; vertical-align: -2px; color: var(--good); }
+.rv-src.ok { color: var(--ink); }
+.rv-note { color: var(--warning-ink); }
+.rv-more { align-self: flex-start; margin-left: 20px; }
+.rv-detail { padding: 8px 12px; margin-left: 28px; background: var(--surface); border: 1px solid var(--rule); border-radius: var(--radius); display: flex; flex-direction: column; gap: 6px; }
+.rv-q ol { margin-top: 4px; }
+.rv-q + .rv-q { border-top: 1px solid var(--ruling); padding-top: 8px; }
+.rv-q li.key { font-weight: 700; }
+.rv-history summary { cursor: pointer; }
+@media (pointer: coarse) {
+  .rv-pick input { width: 22px; height: 22px; }
+}

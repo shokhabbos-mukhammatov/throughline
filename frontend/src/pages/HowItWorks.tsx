@@ -179,6 +179,7 @@ const BUILD = [
   { n: 5, name: "Evidence", gemini: "Judges, for each listed prerequisite separately, whether it taught each concept, from that course's passages only.", code: "Hybrid BM25 + embedding search; rejects any quote that isn't in the passage it cites." },
   { n: 6, name: "Study packs", gemini: "Writes a refresher, a learn path and three questions per concept.", code: "Resources only from a checked catalog of free textbooks; answer positions reshuffled." },
   { n: 7, name: "Verify", gemini: "Answers every question again, blind.", code: "Questions whose keys disagree stay hidden until a person approves them." },
+  { n: 8, name: "Correct", gemini: "Reads the owner's request and course files (review guide, sample exam) and proposes changes to the map.", code: "Keeps only real concepts and weeks, checks every quote against its file, re-solves copied answer keys; applies only what the owner ticks." },
 ];
 
 const STUDENT = [
@@ -339,7 +340,7 @@ export function HowItWorks() {
       <section className="how-section" aria-labelledby="workflow" ref={flowRef}>
         <h2 id="workflow">The workflow</h2>
         <p className="how-sub">Once per course, about two minutes and twenty Gemini calls. Then minutes per student.</p>
-        <p className="how-now" aria-hidden>{now ? <><span className="how-dot" /> Running · {now}</> : <span className="muted">Every course goes through these seven stages once.</span>}</p>
+        <p className="how-now" aria-hidden>{now ? <><span className="how-dot" /> Running · {now}</> : <span className="muted">Every course goes through the first seven stages once; the eighth runs whenever its owner asks for a correction.</span>}</p>
         <h3 className="how-lane">Building the course map <span className="muted small">(once per course)</span></h3>
         <ol className="how-flow">
           {BUILD.map((s, k) => (
