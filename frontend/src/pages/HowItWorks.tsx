@@ -172,17 +172,17 @@ function KnowledgeDemo() {
 /* ---------- page ---------- */
 
 const BUILD = [
-  { n: 1, name: "Read", gemini: "Extracts the timeline, prerequisite statement, \"or equivalent\" routes and AI policy from a PDF, .docx, text or photo.", code: "Removes instructor names, emails and phones first; reconciles weeks and dates into one term calendar." },
+  { n: 1, name: "Read", gemini: "Extracts the timeline, the prerequisites (which courses are all required, which are alternatives), \"or equivalent\" routes and AI policy from a PDF, .docx, text or photo.", code: "Removes instructor names, emails and phones first; reconciles weeks and dates into one term calendar." },
   { n: 2, name: "Record", gemini: null, code: "Looks the course and its prerequisites up in the SF State Bulletin (CourseLeaf parser, verified snapshot fallback)." },
   { n: 3, name: "Map", gemini: "Three independent runs, each from a different angle and item order, propose the prior knowledge every week relies on.", code: "Drops item ids the model invented." },
   { n: 4, name: "Resolve", gemini: "Embeddings; a same-concept judge only for borderline pairs.", code: "Union-find merges names; majority vote keeps concepts; the graph is made acyclic and transitively reduced." },
-  { n: 5, name: "Evidence", gemini: "Judges whether a listed prerequisite taught each concept, from retrieved passages only.", code: "Hybrid BM25 + embedding search; rejects any quote that isn't in the passage it cites." },
+  { n: 5, name: "Evidence", gemini: "Judges, for each listed prerequisite separately, whether it taught each concept, from that course's passages only.", code: "Hybrid BM25 + embedding search; rejects any quote that isn't in the passage it cites." },
   { n: 6, name: "Study packs", gemini: "Writes a refresher, a learn path and three questions per concept.", code: "Resources only from a checked catalog of free textbooks; answer positions reshuffled." },
   { n: 7, name: "Verify", gemini: "Answers every question again, blind.", code: "Questions whose keys disagree stay hidden until a person approves them." },
 ];
 
 const STUDENT = [
-  { n: "A", name: "Set up", text: "How you met the prerequisite, your weekly time, and what you've studied before." },
+  { n: "A", name: "Set up", text: "How you met each prerequisite: the listed course, one of its alternatives, or a course at another school whose syllabus we check. Then your weekly time and what you've studied before." },
   { n: "B", name: "Quick check", text: "At most 8 questions, each chosen for what it tells us; one answer moves its neighbours." },
   { n: "C", name: "Pace plan", text: "Foundations first, everything done before the class that needs it, inside your weekly time." },
   { n: "D", name: "Study", text: "Your own notes first (the exact page or slide), then the free textbook section, a refresher and practice." },
@@ -209,7 +209,7 @@ $$`,
   {
     title: "Hybrid evidence retrieval",
     where: "retrieval.py",
-    what: "Bulletin entries and prerequisite syllabi are split into schedule-row passages. Keyword (BM25) and embedding rankings are fused; Gemini judges coverage from the top passages, and code checks its quote.",
+    what: "Bulletin entries and prerequisite syllabi are split into schedule-row passages. Keyword (BM25) and embedding rankings are fused; for each concept and each prerequisite course, Gemini judges coverage from that course's top passages, and code checks its quote. A syllabus you add for a course you took elsewhere is checked the same way, for you only.",
     math: String.raw`$$
 \mathrm{BM25}(q,d)=\sum_{t\in q}\mathrm{idf}(t)\,\frac{f_{t,d}\,(k_1+1)}{f_{t,d}+k_1\big(1-b+b\,\tfrac{|d|}{\overline{|d|}}\big)}
 $$
@@ -237,7 +237,7 @@ $$
 $$
 P(K\mid r)\propto P(K)\,P(r\mid K),\qquad P(c)=\sum_{K\ni c}P(K)
 $$`,
-    note: "Slip s = 0.10, guess g = 0.25. Priors come from what the student says (studied 0.60, not sure 0.40, never 0.08) and from coverage. Ready at 85%, probably known at 60%: one right answer from 50% gives 78%, two give 93%.",
+    note: "Slip s = 0.10, guess g = 0.25. Priors come from what the student says (studied 0.60, not sure 0.40, never 0.08) and from the courses they took (taught there 0.55, not in them 0.35, unknown 0.50). Ready at 85%, probably known at 60%: one right answer from 50% gives 78%, two give 93%.",
   },
   {
     title: "Adaptive check",

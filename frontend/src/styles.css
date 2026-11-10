@@ -269,7 +269,7 @@ label.inline { white-space: nowrap; margin-left: 6px; }
 .tag { display: inline-block; font-size: 0.75rem; font-weight: 700; padding: 1px 7px; border-radius: 3px; background: var(--sunken); color: var(--ink-2); margin-left: 6px; vertical-align: 1px; white-space: nowrap; }
 .tag.cov-listed { background: color-mix(in srgb, var(--good) 13%, transparent); color: var(--good-ink); }
 .tag.cov-likely { background: var(--sunken); color: var(--ink-2); }
-.tag.cov-missing { background: var(--gold-soft); color: var(--warning-ink); }
+.tag.cov-missing, .tag.cov-gap { background: var(--gold-soft); color: var(--warning-ink); }
 .tag.cov-unknown { background: transparent; color: var(--ink-3); border: 1px dashed var(--rule-strong); }
 
 /* ---------- status ---------- */
@@ -606,7 +606,7 @@ mark.hl, .late { color: inherit; padding-inline: 0.12em; -webkit-box-decoration-
 .gnode, .swatch { --pin: var(--surface); }
 .gnode.cov-listed, .swatch.cov-listed { --pin: var(--good); }
 .gnode.cov-likely, .swatch.cov-likely { --pin: var(--pin-likely); }
-.gnode.cov-missing, .swatch.cov-missing { --pin: var(--gold); }
+.gnode.cov-missing, .gnode.cov-gap, .swatch.cov-missing { --pin: var(--gold); }
 .gnode.cov-unknown::before { background: var(--surface); border: 2px dashed var(--ink-3); box-shadow: none; }
 .swatch { width: 12px; height: 12px; border: 0; background: radial-gradient(circle at 34% 32%, var(--pin-shine) 0 16%, transparent 19%), var(--pin); box-shadow: 0 1px 1px rgba(0, 0, 0, 0.25); }
 .swatch.cov-unknown { background: var(--surface); border: 1.5px dashed var(--ink-3); box-shadow: none; }
@@ -641,7 +641,7 @@ mark.hl, .late { color: inherit; padding-inline: 0.12em; -webkit-box-decoration-
 .pin .pin-hit { fill: transparent; }
 .pin.cov-listed { --pin: var(--good); }
 .pin.cov-likely { --pin: var(--pin-likely); }
-.pin.cov-missing { --pin: var(--gold); }
+.pin.cov-missing, .pin.cov-gap { --pin: var(--gold); }
 .pin.cov-unknown .pin-head { fill: var(--surface); stroke: var(--ink-3); stroke-width: 1.5; stroke-dasharray: 2 2; }
 .pin.cov-unknown .pin-shine { display: none; }
 .pin.dim { opacity: 0.35; }
@@ -920,3 +920,34 @@ mark.hl, .late { color: inherit; padding-inline: 0.12em; -webkit-box-decoration-
 /* ---------- my notes ---------- */
 .materials > li { border: 1px solid var(--rule-strong); border-radius: var(--radius); padding: 10px 14px; display: flex; flex-direction: column; gap: 6px; }
 .covers { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 3px; font-size: 0.9rem; }
+
+/* ---------- the prerequisites you took: one slip per requirement, answers as stickers ---------- */
+.prereq-q { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.setup-step { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.prq { border: 0; margin: 0; min-width: 0; padding: 12px 14px; display: flex; flex-direction: column; gap: 8px;
+  background: var(--grain) var(--surface-2); border-radius: 1px; box-shadow: var(--lift); }
+.prq.extra { background: transparent; box-shadow: none; border: 1.5px dashed var(--rule-strong); border-radius: var(--radius); }
+.prq-name { font-family: var(--font-display); font-weight: 700; font-size: 1.02rem; color: var(--ink); padding: 0; }
+.prq-name .muted { font-family: var(--font-body); font-weight: 400; font-size: 0.9rem; }
+.prq-answers { display: flex; flex-wrap: wrap; gap: 6px 8px; align-items: center; }
+.prq-or { font-size: 0.8rem; color: var(--ink-3); padding-inline: 2px; }
+.pick { border: 1.5px solid var(--rule-strong); background: var(--surface); color: var(--ink-2); border-radius: 999px;
+  padding: 5px 13px; font-weight: 600; font-size: 0.88rem; cursor: pointer; transition: background-color 0.15s ease, border-color 0.15s ease; }
+.pick:hover { border-color: var(--accent); }
+.pick.on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.prq-more { display: flex; flex-direction: column; gap: 6px; padding-top: 4px; min-width: 0; }
+.prq-link { align-self: flex-start; }
+.prior-draft { display: flex; flex-direction: column; gap: 6px; min-width: 0; padding: 10px 12px; background: var(--surface);
+  border: 1px solid var(--rule); border-radius: var(--radius); }
+.prior-draft .form-row { margin-top: 0; }
+.prior-draft .form-row input[type="text"] { flex: 1 1 180px; }
+.prq .notice { margin: 0; }
+.covers q { font-style: italic; }
+.evidence li.ev-open::before { background: var(--surface); border: 1.5px dashed var(--ink-3); }
+@media (pointer: coarse) {
+  .pick { min-height: 44px; padding-inline: 16px; }
+}
+@media (max-width: 560px) {
+  .prq { padding: 10px 12px; }
+  .prq-or { flex-basis: 100%; height: 0; overflow: hidden; }
+}

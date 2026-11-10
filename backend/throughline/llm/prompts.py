@@ -17,6 +17,9 @@ chapter titles only if the syllabus names the textbook and edition.
 
 Also extract:
 - official_prereqs: course codes in the prerequisite statement, formatted like "DS 212". prereq_text: the statement, quoted.
+- prereq_groups: the same statement as requirements that must all be met. Each requirement lists the course codes that
+  satisfy it: "DS 110 or MATH 108" is one requirement with two options; "CSC 317 and CSC 413" is two requirements with one
+  option each; "CSC 340 and (MATH 324 or MATH 338)" is two requirements. Leave out courses that are only recommended.
 - prereq_routes: alternative ways in, quoted ("or equivalent", "or permission of the instructor", "graduate standing").
 - informal_requirements: expectations outside the formal prerequisite, quoted (e.g. "Some computer programming experience is required").
 - instructor_notes: what the instructor says students do or do not need to know, quoted.
@@ -70,7 +73,9 @@ this level. Give a short reason."""
 
 JUDGE_COVERAGE = """You check whether a prerequisite course actually teaches a concept, using only the numbered passages
 given for that concept (Bulletin descriptions, the prerequisite course's syllabus, the current syllabus).
-For each concept:
+The same concept can appear several times with a different concept_id, once per course: judge each entry on its own
+passages and return its concept_id exactly as given.
+For each entry:
 - verdict "teaches": a passage clearly covers the concept at the depth needed.
 - verdict "partial": a passage covers it more shallowly, or only a closely related idea.
 - verdict "unrelated": no passage covers it. Do not use outside knowledge about what such courses usually teach.

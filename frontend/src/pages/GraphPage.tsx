@@ -339,9 +339,9 @@ export function PrereqMapTab({ course }: { course: CourseDetail }) {
             <span key={s} className="item"><span className={`status ${s}`}><StatusIcon status={s} size={12} /></span>{STATUS_LABEL[s]}</span>
           ))}
           <span className="item">Pin colour:</span>
-          <span className="item"><span className="swatch cov-listed" /> taught in a listed prerequisite</span>
-          <span className="item"><span className="swatch cov-likely" /> probably from a listed prerequisite</span>
-          <span className="item"><span className="swatch cov-missing" /> not in listed prerequisites</span>
+          <span className="item"><span className="swatch cov-listed" /> taught in a course you took</span>
+          <span className="item"><span className="swatch cov-likely" /> probably taught there</span>
+          <span className="item"><span className="swatch cov-missing" /> not in the listed prerequisites, or not in the ones you took</span>
           <span className="item"><span className="swatch cov-unknown" /> not confirmed</span>
           <span className="item"><svg className="thread-sample" width="30" height="8" aria-hidden><g className="thread weak" style={{ "--t": "var(--ink-3)" } as CSSProperties}><path className="yarn" d="M2 4h26" /></g></svg> dashed string: fewer than 2 of 3 mapping runs agreed</span>
 </div>;

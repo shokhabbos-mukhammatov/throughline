@@ -1,6 +1,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { go } from "../App";
+import { orList } from "../components/Background";
 import { ConceptDrawer } from "../components/ConceptDrawer";
 import { Icon, Spinner } from "../components/ui";
 import { api, rememberCourse, type CourseDetail } from "../lib/api";
@@ -23,6 +24,7 @@ const STAGES = [
   "Checking what prerequisites taught",
   "Writing study material",
   "Double-checking answer keys",
+  "Checking the courses students took",
 ];
 
 function BuildProgress({ course }: { course: CourseDetail }) {
@@ -102,6 +104,11 @@ function CourseHeader({ c }: { c: CourseDetail }) {
       <div className="ch-prereq">
         <span className="label">Official prerequisites</span>
         <p className="ch-prereq-text">{c.prereq_text || c.official_prereqs.join(", ") || "None listed"}</p>
+        {c.official_prereqs.length > 1 && (
+          <p className="small ch-extra">
+            Read as: {c.prereq_groups.map((g) => (g.length > 1 ? `one of ${orList(g)}` : g[0])).join(", and ")}
+          </p>
+        )}
         {c.prereq_routes.length > 0 && <p className="small muted ch-extra">Other ways in: {c.prereq_routes.join(" · ")}</p>}
         <button className="btn ghost small" onClick={() => setOpen((o) => !o)} aria-expanded={open}>{open ? "Hide" : "Show"} sources and notes</button>
       </div>
@@ -163,7 +170,9 @@ export function CoursePage({ id, tab, concept }: { id: string; tab: string; conc
     { id: "share", label: "Share" },
   ];
   const active = tabs.some((t) => t.id === tab) ? tab : "plan";
-  const needsSetup = tab === "setup" || (!c.enrolled && (active === "plan" || active === "timeline" || active === "map" || active === "notes"));
+  const personal = active === "plan" || active === "timeline" || active === "map" || active === "notes";
+  // Setup comes first, and comes back if the course lists alternatives ("A or B") this student hasn't chosen between.
+  const needsSetup = tab === "setup" || ((!c.enrolled || (c.choices_needed ?? []).length > 0) && personal);
 
   return (
     <>

@@ -22,6 +22,10 @@ class FreeResource(BaseModel):
     detail: str = ""
 
 
+class PrereqGroup(BaseModel):
+    options: list[str] = Field(description="Course codes that each satisfy this one requirement. A single code when there is no alternative.")
+
+
 class SyllabusParse(BaseModel):
     code: str = Field(description="Course code like 'DS 612'. If cross-listed, the undergraduate code.")
     title: str = ""
@@ -29,6 +33,10 @@ class SyllabusParse(BaseModel):
     term_start: str | None = Field(default=None, description="ISO date of the first class, if determinable.")
     term_end: str | None = Field(default=None, description="ISO date of the last class or final exam, if determinable.")
     official_prereqs: list[str] = Field(default_factory=list, description="Course codes listed as prerequisites.")
+    prereq_groups: list[PrereqGroup] = Field(
+        default_factory=list,
+        description="The prerequisite statement as requirements that must ALL be met; each lists the courses that satisfy it.",
+    )
     prereq_text: str = Field(default="", description="The prerequisite sentence, quoted.")
     prereq_routes: list[str] = Field(
         default_factory=list, description="Alternative ways in, quoted: 'or equivalent', 'or permission of the instructor', ..."

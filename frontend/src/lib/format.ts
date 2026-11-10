@@ -22,6 +22,7 @@ export const COVERAGE_LABEL: Record<Coverage, { label: string; hint: string }> =
   listed: { label: "Taught in", hint: "A listed prerequisite teaches it, and we found the passage that says so." },
   likely: { label: "Probably from", hint: "Usually part of the listed prerequisite, but the record doesn't confirm it." },
   missing: { label: "Not in listed prerequisites", hint: "The course needs it, and the evidence says no listed prerequisite teaches it." },
+  gap: { label: "Not in the courses you took", hint: "A listed prerequisite teaches it, but the courses you told us you took don't show it." },
   unknown: { label: "Not confirmed", hint: "The Bulletin descriptions are too short to tell. Adding the prerequisite's syllabus settles it." },
 };
 

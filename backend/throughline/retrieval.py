@@ -101,17 +101,20 @@ class EvidenceIndex:
             self.vectors = m / np.maximum(np.linalg.norm(m, axis=1, keepdims=True), 1e-9)
         self.engine = engine
 
-    def search(self, query: str, query_vec: list[float] | None, k: int = 4) -> list[Passage]:
-        if not self.passages:
+    def search(self, query: str, query_vec: list[float] | None, k: int = 4, only: list[int] | None = None) -> list[Passage]:
+        """The k best passages; `only` limits the search to those passage positions (one course's record)."""
+        if not self.passages or (only is not None and not only):
             return []
+        allowed = None if only is None else set(only)
         lexical = self.bm25.scores(query)
-        lex_rank = [i for i in np.argsort(-np.asarray(lexical)) if lexical[i] > 0]
+        lex_rank = [int(i) for i in np.argsort(-np.asarray(lexical)) if lexical[i] > 0 and (allowed is None or int(i) in allowed)]
         rankings = [lex_rank]
         if self.vectors is not None and query_vec is not None:
             q = np.asarray(query_vec, dtype=np.float32)
             q /= max(float(np.linalg.norm(q)), 1e-9)
             sims = self.vectors @ q
-            rankings.append([int(i) for i in np.argsort(-sims)[: max(k * 3, 8)]])
+            by_sim = [int(i) for i in np.argsort(-sims) if allowed is None or int(i) in allowed]
+            rankings.append(by_sim[: max(k * 3, 8)])
         fused = rrf(rankings)
         return [self.passages[i] for i, _ in fused[:k]]
 

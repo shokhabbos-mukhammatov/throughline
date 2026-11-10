@@ -9,9 +9,13 @@ const KIND = { slides: "Slides", pdf: "PDF", doc: "Document", notes: "Notes", ph
 export function NotesTab({ course }: { course: CourseDetail }) {
   const qc = useQueryClient();
   const { data, isLoading } = useQuery({ queryKey: ["materials", course.id], queryFn: () => api.materials(course.id) });
-  const options = course.official_prereqs;
-  const elsewhere = course.enrollment?.route === "equivalent" || course.enrollment?.route === "permission";
-  const [code, setCode] = useState(course.enrollment?.prereq_taken ?? (elsewhere ? "" : options[0] ?? ""));
+  const { data: earlier } = useQuery({ queryKey: ["background", course.id], queryFn: () => api.background(course.id) });
+  const met = course.enrollment?.met ?? {};
+  const took = course.official_prereqs.filter((c) => met[c] === "took");
+  // The courses this student actually took come first: listed ones, then the ones they added from other schools.
+  const options = [...new Set([...took, ...(earlier ?? []).map((p) => p.code), ...course.official_prereqs])];
+  const [picked, setCode] = useState<string | null>(null);
+  const code = picked ?? took[0] ?? earlier?.[0]?.code ?? (Object.keys(met).length ? "" : options[0] ?? "");
   const [other, setOther] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);

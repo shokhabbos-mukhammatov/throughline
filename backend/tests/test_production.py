@@ -165,6 +165,16 @@ def test_firestore_store_round_trip_through_the_app_layers():
     assert again is not None and again.build.status == "ready"
     assert len(repo.concepts.list()) >= 8 and repo.edges.list() and repo.enrollments.list()
     assert ctx.catalog.by_join_code(course.join_code).id == course.id
+    # Prerequisite groups, per-course coverage, answers per prerequisite and a student's earlier course all store.
+    from throughline.models import Enrollment, PriorCourse
+    again.official_prereqs, again.prereq_groups = ["DEMO 212", "DEMO 110", "DEMO 115"], [["DEMO 212"], ["DEMO 110", "DEMO 115"]]
+    ctx.catalog.put(again)
+    assert ctx.catalog.get(course.id).groups() == [["DEMO 212"], ["DEMO 110", "DEMO 115"]]
+    assert any(r.code == "DEMO 212" for c in repo.concepts.list() for r in c.by_course)
+    repo.enrollments.put(Enrollment(id="s1", met={"DEMO 212": "elsewhere", "DEMO 110": "took"}))
+    assert repo.enrollments.get("s1").met == {"DEMO 212": "elsewhere", "DEMO 110": "took"}
+    repo.prior_courses.put(PriorCourse(student="s1", code="CSE 206", school="Riverbend University", replaces="DEMO 212"))
+    assert [p.label for p in repo.prior_courses.list(student="s1")] == ["CSE 206 (Riverbend University)"]
     repo.wipe()
     assert repo.concepts.list() == []
 

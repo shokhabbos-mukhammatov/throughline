@@ -1,11 +1,20 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { useDialog } from "../lib/useDialog";
-import { api, type CourseDetail, type SelfReport } from "../lib/api";
+import { api, type CourseDetail, type Coverage, type SelfReport } from "../lib/api";
 import { minutes, shortDate } from "../lib/format";
 import { WhereToLearn } from "../pages/Readiness";
 import { CheckCard } from "./CheckCard";
 import { CoverageTag, Icon, Markdown, ProbBar, ResourceList, Spinner, StatusChip } from "./ui";
+
+/** What one prerequisite's record says about a concept, in words. */
+const RECORD: Record<Coverage, (quote: string) => string> = {
+  listed: () => "teaches it",
+  likely: (quote) => (quote ? "covers part of it" : "usually teaches it, but its Bulletin description doesn't confirm it"),
+  missing: () => "its syllabus doesn't mention it",
+  gap: () => "",
+  unknown: () => "not confirmed: its Bulletin description is too short to tell",
+};
 
 /** Study one concept: why the course needs it, the refresher or a learn path, free resources, practice. */
 export function ConceptDrawer({ course, conceptId, onClose }: { course: CourseDetail; conceptId: string; onClose: () => void }) {
@@ -72,8 +81,32 @@ export function ConceptDrawer({ course, conceptId, onClose }: { course: CourseDe
               </section>
 
               <section>
-                <span className="label">Is it taught in a prerequisite?</span>
-                {s.evidence_items.length > 0 ? (
+                <span className="label">Was it taught in a course you took?</span>
+                {s.your_evidence.length > 0 ? (
+                  <ul className="evidence">
+                    {s.your_evidence.map((e, i) => (
+                      <li key={i} className={`ev-${e.verdict}`}>
+                        <span className="small muted">{e.source}</span>
+                        <q>{e.quote}</q>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="small">{s.coverage_note || s.evidence || "No evidence either way yet."}</p>
+                )}
+                {s.by_course.length > 0 ? (
+                  <>
+                    <span className="small muted">What the record of each listed prerequisite says:</span>
+                    <ul className="evidence">
+                      {s.by_course.map((r) => (
+                        <li key={r.code} className={`ev-${r.coverage === "listed" ? "teaches" : r.coverage === "missing" ? "unrelated" : r.quote ? "partial" : "open"}`}>
+                          <span className="small"><b>{r.code}</b> <span className="muted">{RECORD[r.coverage](r.quote)}{r.quote && r.source ? ` · ${r.source}` : ""}</span></span>
+                          {r.quote && <q>{r.quote}</q>}
+                        </li>
+                      ))}
+                    </ul>
+                  </>
+                ) : s.evidence_items.length > 0 && s.your_evidence.length === 0 ? (
                   <ul className="evidence">
                     {s.evidence_items.map((e, i) => (
                       <li key={i} className={`ev-${e.verdict}`}>
@@ -82,9 +115,7 @@ export function ConceptDrawer({ course, conceptId, onClose }: { course: CourseDe
                       </li>
                     ))}
                   </ul>
-                ) : (
-                  <p className="small muted">{s.evidence || "No evidence either way yet."}</p>
-                )}
+                ) : null}
               </section>
 
               <section>

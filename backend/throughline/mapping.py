@@ -7,10 +7,12 @@ Pipeline (each stage is timed and its model calls counted in course.build.trace)
                and what each concept builds on.
   4. Resolve   entity resolution clusters the proposed names; a concept or relation is kept only when a
                majority of runs agree (agreement = confidence); relations become a cycle-free graph.
-  5. Evidence  hybrid retrieval over the Bulletin and prerequisite syllabi; the model judges coverage from
-               the retrieved passages only; code checks every quote. Coverage: listed / likely / missing / unknown.
+  5. Evidence  hybrid retrieval over the Bulletin and prerequisite syllabi; for each concept and each listed
+               prerequisite, the model judges coverage from that course's passages only; code checks every quote.
+               Coverage: listed / likely / missing / unknown.
   6. Study     refresher, learn path, resources from a fixed catalog, three questions per concept.
   7. Verify    every answer key is solved blind by an independent call; disagreements are hidden until approved.
+  8. Students  syllabi students added for the courses they took are compared with the new map (background.py).
 
 The model proposes; code validates and decides.
 """
@@ -35,16 +37,18 @@ from .graph import acyclic_edges, resolve, transitive_reduction
 from .llm import ConceptCard, CourseContext, CoverageRequest, Engine, ItemCard, QuestionCard, ResourceCard
 from .llm.failures import describe_failure
 from .llm.schemas import SyllabusParse
-from .models import AiPolicy, BankQuestion, Concept, Course, Edge, Evidence, Requirement, Resource, StageTrace, Topic
+from .materials import match_concepts
+from .models import AiPolicy, BankQuestion, Concept, Course, CourseCoverage, Edge, Evidence, Requirement, Resource, StageTrace, Topic
 from .retrieval import EvidenceIndex, build_corpus, quote_supported
 from .seed import library
-from .textutil import contains_phrase, course_code, normalize_name
+from .textutil import contains_phrase, course_code, normalize_name, tidy_groups
 
 log = logging.getLogger(__name__)
 
 ITEMS_PER_CALL = 6
 CONCEPTS_PER_CALL = 3
 COVERAGE_PER_CALL = 6
+PASSAGES_PER_COURSE = 3  # shown to the judge for one concept and one prerequisite course
 QUESTIONS_PER_SOLVE = 12
 PARALLEL = 4
 JOBS = ("read_document", "parse_syllabus", "map_prerequisites", "embed", "judge_same", "judge_coverage", "write_packs", "solve")
@@ -125,6 +129,7 @@ def apply_parse(course: Course, parsed: SyllabusParse) -> list[Topic]:
     course.title = course.title or parsed.title
     course.term = parsed.term or course.term
     course.official_prereqs = [course_code(c) for c in parsed.official_prereqs]
+    course.prereq_groups = [g.options for g in parsed.prereq_groups]  # tidied once the Bulletin has been read
     course.prereq_text = parsed.prereq_text
     course.prereq_routes = parsed.prereq_routes
     course.informal_requirements = parsed.informal_requirements
@@ -189,6 +194,7 @@ def propose(run: Run, topics: list[Topic], taught_here: list[str]) -> list[Propo
     course, settings = run.course, run.ctx.settings
     cctx = CourseContext(
         label=f"{course.code} {course.title}".strip(), prereq_text=course.prereq_text, official_prereqs=course.official_prereqs,
+        prereq_groups=course.prereq_groups,
         informal_requirements=course.informal_requirements, instructor_notes=course.instructor_notes,
         taught_here=taught_here, bulletin=_bulletin_lines(course),
     )
@@ -329,10 +335,20 @@ def _instructor_negation(course: Course, c: Concept) -> str | None:
 
 
 def check_coverage(run: Run, concepts: list[Concept]) -> dict:
+    """Ask, for every concept and every listed prerequisite separately, whether that course's record teaches it.
+
+    A course can require several prerequisites and accept alternatives, and students differ in which ones they took,
+    so one answer per concept isn't enough: `by_course` keeps one per prerequisite, and the concept's own coverage
+    is the best of them.
+    """
     course = run.course
-    listed = {course_code(c) for c in course.official_prereqs}
+    listed = list(dict.fromkeys(course_code(c) for c in course.official_prereqs))
     corpus = build_corpus(run.ctx.store, course)
     index = EvidenceIndex(run.engine, corpus)
+    of_course: dict[str, list[int]] = {}
+    for i, p in enumerate(corpus):
+        if p.kind != "this_syllabus" and p.code in listed:
+            of_course.setdefault(p.code, []).append(i)
     have_syllabus = {p.code for p in corpus if p.kind == "prereq_syllabus"}
     queries = [f"{c.name}. {' '.join(c.aliases[:3])}. {c.summary}" for c in concepts]
     try:
@@ -342,10 +358,12 @@ def check_coverage(run: Run, concepts: list[Concept]) -> dict:
 
     requests, retrieved = [], {}
     for c, query, qv in zip(concepts, queries, qvecs):
-        hits = [p for p in index.search(query, qv, k=4) if p.kind != "this_syllabus"]
-        retrieved[c.id] = {p.label: p for p in hits}
-        if hits:
-            requests.append(CoverageRequest(c.id, c.name, c.summary, c.depth, [p.card() for p in hits]))
+        for n, code in enumerate(listed):
+            hits = index.search(query, qv, k=PASSAGES_PER_COURSE, only=of_course.get(code, []))
+            if hits:
+                key = f"{c.id}~{n}"
+                retrieved[key] = {p.label: p for p in hits}
+                requests.append(CoverageRequest(key, c.name, c.summary, c.depth, [p.card() for p in hits]))
 
     judgments = {}
     batches = [requests[i : i + COVERAGE_PER_CALL] for i in range(0, len(requests), COVERAGE_PER_CALL)]
@@ -365,34 +383,52 @@ def check_coverage(run: Run, concepts: list[Concept]) -> dict:
     counts = Counter()
     rejected_quotes = 0
     for c in concepts:
-        c.evidence_items = []
+        hint = c.covered_by if c.covered_by in listed else None  # what the mapping runs (or the last check) believed
+        records = []
+        for n, code in enumerate(listed):
+            key = f"{c.id}~{n}"
+            j = judgments.get(key)
+            claimed = j is not None and j.verdict != "unrelated"
+            cited = retrieved.get(key, {}).get(j.passage) if j and j.passage else None
+            if claimed and cited and not quote_supported(j.quote, cited.text):
+                rejected_quotes += 1  # the model's quote isn't in the passage it cited: don't trust the verdict
+                cited = None
+            if claimed and cited:
+                records.append(CourseCoverage(code=code, coverage="listed" if j.verdict == "teaches" else "likely",
+                                              source=cited.source, quote=j.quote.strip()[:300]))
+            elif code in have_syllabus and not claimed:
+                records.append(CourseCoverage(code=code, coverage="missing", source=f"{code} syllabus"))
+            else:
+                records.append(CourseCoverage(code=code, coverage="likely" if code == hint else "unknown"))
         negation = _instructor_negation(course, c)
-        j = judgments.get(c.id)
-        cited = retrieved.get(c.id, {}).get(j.passage) if j and j.passage else None
-        if j and cited and j.verdict != "unrelated" and not quote_supported(j.quote, cited.text):
-            rejected_quotes += 1  # the model's quote isn't in the passage it cited: don't trust the verdict
-            cited = None
-        if cited and cited.code and cited.code not in listed:
-            cited = None  # evidence about a course that isn't a listed prerequisite doesn't count
+        if negation:  # the instructor says students don't need it: only a clear "taught there" stands against that
+            records = [r if r.coverage != "likely" else
+                       CourseCoverage(code=r.code, coverage="missing", source=f"{r.code} syllabus") if r.code in have_syllabus else
+                       CourseCoverage(code=r.code) for r in records]
+        c.by_course = records
+
+        taught = next((r for r in records if r.coverage == "listed"), None)
+        partly = next((r for r in records if r.coverage == "likely" and r.quote), None)
+        checked = sorted(r.code for r in records if r.coverage == "missing")
+        c.evidence_items = [Evidence(source=r.source, quote=r.quote, verdict="teaches" if r.coverage == "listed" else "partial")
+                            for r in records if r.quote]
         if negation:
             c.coverage, c.covered_by = "missing", None
             c.evidence = f"The syllabus says: “{negation}”"
-            c.evidence_items.append(Evidence(source="This syllabus", quote=negation, verdict="unrelated"))
-        elif cited and j and j.verdict == "teaches":
-            c.coverage, c.covered_by = "listed", cited.code
-            c.evidence = f"{cited.source}: “{j.quote}”"
-            c.evidence_items.append(Evidence(source=cited.source, quote=j.quote, verdict="teaches"))
-        elif cited and j and j.verdict == "partial":
-            c.coverage, c.covered_by = "likely", cited.code
-            c.evidence = f"Partly covered. {cited.source}: “{j.quote}”"
-            c.evidence_items.append(Evidence(source=cited.source, quote=j.quote, verdict="partial"))
-        elif listed and listed & have_syllabus and (j is None or j.verdict == "unrelated"):
+            c.evidence_items = [Evidence(source="This syllabus", quote=negation, verdict="unrelated")]
+        elif taught:
+            c.coverage, c.covered_by = "listed", taught.code
+            c.evidence = f"{taught.source}: “{taught.quote}”"
+        elif partly:
+            c.coverage, c.covered_by = "likely", partly.code
+            c.evidence = f"Partly covered. {partly.source}: “{partly.quote}”"
+        elif checked:
             c.coverage, c.covered_by = "missing", None
-            checked = ", ".join(sorted(listed & have_syllabus))
-            c.evidence = f"Not found in the {checked} syllabus."
-        elif c.covered_by and c.covered_by in listed:
-            c.coverage = "likely"
-            c.evidence = f"Usually taught in {c.covered_by}; its Bulletin description doesn't confirm it." + (f" {c.evidence}" if c.evidence else "")
+            c.evidence = f"Not found in the {', '.join(checked)} syllabus."
+        elif hint:
+            usual = f"Usually taught in {hint}; its Bulletin description doesn't confirm it."
+            c.coverage, c.covered_by = "likely", hint
+            c.evidence = usual if not c.evidence or c.evidence.startswith("Usually taught in") else f"{usual} {c.evidence}"
         elif not listed:
             c.coverage, c.covered_by = "missing", None
             c.evidence = "The syllabus lists no prerequisite course that would teach it."
@@ -516,6 +552,24 @@ def verify(run: Run, questions: list[BankQuestion]) -> dict:
                     q.verification_note = s.note.strip()[:300] or f"An independent solve picked option {s.choice + 1}."
             run.progress("Double-checking answer keys", checked, len(questions))
     return {"verified": checked, "disputed": disputed}
+# Stage 8: what students brought
+def match_students_documents(run: Run, repo, concepts: list[Concept]) -> str:
+    """Compare each student's own syllabi (and, after a rebuild, their notes) with the new map: the concept ids
+    they were matched to before, if any, no longer exist."""
+    from .background import match_prior_course
+
+    kept = [c for c in concepts if not c.removed]
+    syllabi = [p for p in repo.prior_courses.list() if p.chunks]
+    for p in syllabi:
+        match_prior_course(run.engine, kept, p)
+        repo.prior_courses.put(p)
+    notes = repo.materials.list()
+    for m in notes:
+        m.matches = match_concepts(run.engine, kept, m)
+        repo.materials.put(m)
+    return f"{len(syllabi)} syllabi from earlier courses, {len(notes)} notes files"
+
+
 def build_course(ctx: Ctx, course_id: str, hint_code: str = "") -> None:
     course = ctx.catalog.get(course_id)
     if course is None:
@@ -532,9 +586,14 @@ def build_course(ctx: Ctx, course_id: str, hint_code: str = "") -> None:
 
         with run.stage("Checking the SF State Bulletin") as st:
             course.bulletin = bulletin.chain(course.code, course.official_prereqs, live=ctx.settings.bulletin_live)
+            statement = course.prereq_text
             if not course.official_prereqs and course.bulletin:
                 course.official_prereqs = course.bulletin[0].prereq_codes
+                statement = course.bulletin[0].prerequisites
+            course.prereq_groups = tidy_groups(course.prereq_groups, course.official_prereqs, statement)
             st.notes = [f"{b.code} ({b.source})" for b in course.bulletin] or ["no entries found"]
+            if course.prereq_groups:
+                st.notes.append("requires " + " and ".join(" or ".join(g) for g in course.prereq_groups))
 
         with run.stage("Mapping prerequisites") as st:
             proposals = propose(run, topics, parsed.taught_here)
@@ -556,6 +615,9 @@ def build_course(ctx: Ctx, course_id: str, hint_code: str = "") -> None:
         with run.stage("Double-checking answer keys") as st:
             stats = verify(run, questions)
             st.notes = [f"{k.replace('_', ' ')}: {v}" for k, v in stats.items()]
+
+        with run.stage("Checking the courses students took") as st:
+            st.notes = [match_students_documents(run, repo, concepts)]
 
         with ctx.lock(course_id):
             repo.clear_map()

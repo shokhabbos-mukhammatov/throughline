@@ -12,7 +12,7 @@ import re
 from datetime import date
 
 from ..seed import library
-from ..textutil import contains_phrase, course_code, hashed_embedding, jaccard, normalize_name
+from ..textutil import contains_phrase, course_code, hashed_embedding, jaccard, normalize_name, prereq_groups
 from .base import ConceptCard, CourseContext, CoverageRequest, EngineUnavailable, ItemCard, PairCard, QuestionCard, ResourceCard
 from .schemas import (
     ConceptPack,
@@ -25,6 +25,7 @@ from .schemas import (
     ItemRequirements,
     MappingResult,
     PairJudgment,
+    PrereqGroup,
     RequiredConcept,
     SameConceptJudgments,
     Solutions,
@@ -65,6 +66,7 @@ def _clean(text: str) -> str:
     text = _ISO.sub("", text)
     text = _MON_DAY.sub("", text)
     text = re.sub(r"\(\s*\)", "", text)
+    text = re.sub(r"^[\s)|:\-–—]+", "", text)  # "Week 3 (2026-11-16): Topic" leaves "): Topic" once the date is gone
     return re.sub(r"\s{2,}", " ", text).strip(" |:-–—")
 
 
@@ -177,6 +179,7 @@ class OfflineEngine:
         return SyllabusParse(
             code=code, title=title, term=term, term_start=start.isoformat() if start else None,
             term_end=dated[-1].isoformat() if dated else None, official_prereqs=list(dict.fromkeys(prereqs)),
+            prereq_groups=[PrereqGroup(options=g) for g in prereq_groups(prereq_text, prereqs)],
             prereq_text=prereq_text, prereq_routes=routes, informal_requirements=informal[:4], instructor_notes=notes[:4],
             ai_stance=stance, ai_summary=ai_summary, timeline_kind=kind, timeline=timeline, free_resources=resources,
         )

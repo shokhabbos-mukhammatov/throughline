@@ -135,14 +135,10 @@ def to_chunks(sections: list[tuple[str, str]]) -> list[MaterialChunk]:
     return chunks
 
 
-def match_concepts(engine: Engine, concepts: list[Concept], material: Material) -> list[MaterialMatch]:
-    """Which concepts this material covers, and where; each match carries a quote verified against its passage."""
-    if not concepts or not material.chunks:
-        return []
-    source = f"{material.prereq_code or 'Your'} {KIND_WORD.get(material.kind, 'notes')}".strip()
-    passages = [Passage(label=f"n{i}", source=f"{source}, {ch.loc}", text=ch.text, kind="notes", code=material.prereq_code or None)
-                for i, ch in enumerate(material.chunks)]
-    loc_of = {p.label: ch.loc for p, ch in zip(passages, material.chunks)}
+def judge_passages(engine: Engine, concepts: list[Concept], passages: list[Passage]) -> tuple[list[tuple[str, Passage, str, str]], set[str]]:
+    """Which concepts a document's passages cover: [(concept id, passage, quote, verdict)], plus the ids that were
+    actually judged (a failed model call judges nothing, and that must not read as "not covered").
+    Every match carries a quote verified against its passage."""
     index = EvidenceIndex(engine, passages)
     queries = [f"{c.name}. {' '.join(c.aliases[:3])}. {c.summary}" for c in concepts]
     try:
@@ -162,19 +158,33 @@ def match_concepts(engine: Engine, concepts: list[Concept], material: Material) 
         try:
             return engine.judge_coverage(batch).judgments
         except Exception as exc:
-            log.warning("judging material coverage failed: %s", exc)
+            log.warning("judging coverage of a student's document failed: %s", exc)
             return []
 
-    matches = []
+    found, judged = [], set()
     with ThreadPoolExecutor(max_workers=4) as pool:
         for judgments in pool.map(judge, batches):
             for j in judgments:
-                cited = retrieved.get(j.concept_id, {}).get(j.passage or "")
+                if j.concept_id not in retrieved:
+                    continue
+                judged.add(j.concept_id)
+                cited = retrieved[j.concept_id].get(j.passage or "")
                 if j.verdict == "unrelated" or cited is None or not quote_supported(j.quote, cited.text):
                     continue
-                matches.append(MaterialMatch(concept_id=j.concept_id, loc=loc_of[cited.label], quote=j.quote.strip()[:300],
-                                             verdict=j.verdict))
-    return matches
+                found.append((j.concept_id, cited, j.quote.strip()[:300], j.verdict))
+    return found, judged
+
+
+def match_concepts(engine: Engine, concepts: list[Concept], material: Material) -> list[MaterialMatch]:
+    """Which concepts this material covers, and where."""
+    if not concepts or not material.chunks:
+        return []
+    source = f"{material.prereq_code or 'Your'} {KIND_WORD.get(material.kind, 'notes')}".strip()
+    passages = [Passage(label=f"n{i}", source=f"{source}, {ch.loc}", text=ch.text, kind="notes", code=material.prereq_code or None)
+                for i, ch in enumerate(material.chunks)]
+    loc_of = {p.label: ch.loc for p, ch in zip(passages, material.chunks)}
+    found, _ = judge_passages(engine, concepts, passages)
+    return [MaterialMatch(concept_id=cid, loc=loc_of[p.label], quote=quote, verdict=verdict) for cid, p, quote, verdict in found]
 
 
 def build_material(engine: Engine, concepts: list[Concept], student: str, prereq_code: str, filename: str,

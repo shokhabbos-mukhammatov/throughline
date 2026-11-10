@@ -29,7 +29,10 @@ Nobody sees the gap until the student is already behind.
 ## What it does
 
 1. **Maps the course.** Each week (or each quiz, when there's no weekly schedule) is linked to the prior knowledge it uses, and concepts are linked to what they build on.
-2. **Answers "was this taught?"** Each concept is *taught in* a listed prerequisite (with the quoted line), *probably from* one, *not in listed prerequisites*, or *not confirmed*. When a course accepts alternatives ("DS 110 or MATH 108 or MATH 226"), only the one the student took counts.
+2. **Answers "was this taught in the courses you took?"**
+   - A course can require several prerequisites ("CSC 317 and CSC 413") and accept alternatives ("DS 110 or MATH 108"). Each concept is checked against each listed prerequisite separately: *taught in* it (with the quoted line), *probably from* it, *not in listed prerequisites*, or *not confirmed*.
+   - Students say how they met each requirement, and choose between alternatives before the plan and the quick check. Only the courses they took count.
+   - A course from another school counts through its own syllabus (a file or pasted text, private to that student). What a listed prerequisite teaches but the student's courses don't is marked *not in the courses you took*.
 3. **Checks the student in at most 8 questions.** Each question is the one expected to tell us the most; one answer also moves the concepts around it.
 4. **Builds a pace plan.** Foundations come first, everything is finished before the class that needs it, and it fits the student's weekly time. If it can't fit, the plan says what is short and by how many minutes, and points to tutoring.
 5. **Says where to learn each thing.** First the student's own notes or slides from the prerequisite, or from the course they took instead, even at another university (the exact page or slide), then a free open-textbook section, a refresher and practice.
@@ -173,7 +176,7 @@ cd ../frontend && npm ci && npm run build
 cd ../backend && uvicorn throughline.api:app --port 8080
 ```
 
-Open http://localhost:8080 and choose **Try the sample course**. Tests: `cd backend && pytest -q` (60 pass). Full setup, deployment and the demo-day script are in **[docs/GUIDE.md](docs/GUIDE.md)**; the visual design is described in [DESIGN.md](DESIGN.md).
+Open http://localhost:8080 and choose **Try the sample course**. Tests: `cd backend && pytest -q` (79 pass). Full setup, deployment and the demo-day script are in **[docs/GUIDE.md](docs/GUIDE.md)**; the visual design is described in [DESIGN.md](DESIGN.md).
 
 ## Repository
 

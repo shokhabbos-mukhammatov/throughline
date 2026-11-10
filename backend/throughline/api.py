@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import os
+import re
 import threading
 import time
 import uuid
@@ -16,6 +18,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
+from . import background as bg
 from . import bulletin
 from .assessment import NotFound, adaptive_next, answer, study
 from .auth import Identity, identify, require_account
@@ -27,7 +30,7 @@ from .llm import make_engine
 from .graph import depths
 from .jobs import JOB_PATH, make_queue, run_job, verify_task_token
 from .materials import build_material
-from .models import Course, Enrollment, Material, PrereqDoc
+from .models import Course, Enrollment, Material, PrereqDoc, PriorCourse
 from .observability import request_id, setup_logging, trace
 from .readiness import Snapshot, concept_view, plan, timeline
 from .seed import sample
@@ -259,7 +262,20 @@ def bulletin_lookup(code: str):
     entry = bulletin.lookup(code, live=settings.bulletin_live)
     if entry is None:
         raise HTTPException(404, f"{course_code(code)} isn't in the Bulletin snapshot, and the live Bulletin didn't answer.")
-    return entry.model_dump()
+    return {**entry.model_dump(), "prereq_groups": entry.groups()}
+
+
+MAX_PREREQ_DOCS = 6
+
+
+def _prereq_doc(code: str, text: str) -> PrereqDoc:
+    if not code.strip():
+        raise HTTPException(400, "Say which prerequisite course each syllabus is for")
+    if len(text.strip()) < 20:  # a pasted topic list can be short; an empty read can't be evidence
+        raise HTTPException(422, f"The {course_code(code)} syllabus looks empty. Try another file or paste the text.")
+    return PrereqDoc(code=course_code(code), text=redact(text)[: bg.SYLLABUS_CHARS])
+
+
 @app.post("/api/courses")
 async def add_course(
     code: str = Form(""),
@@ -267,34 +283,57 @@ async def add_course(
     file: UploadFile | None = File(None),
     prereq_code: str = Form(""),
     prereq_file: UploadFile | None = File(None),
+    prereqs: str = Form(""),  # JSON: [{"code": "DS 212", "text": "..."} or {"code": "ISYS 263", "file": 0}]
+    prereq_files: list[UploadFile] | None = File(None),
     uid: str = Depends(account_uid),
 ):
+    """Map a course from its syllabus. Syllabi of its listed prerequisites (any number, each a file or pasted text)
+    become evidence of what those courses taught, for everyone in the class."""
     if file is None and not text.strip():
         raise HTTPException(400, "Upload the syllabus file or paste its text")
     raw = await _read_syllabus(file) if file is not None else text
     if len(raw.strip()) < 80:
         raise HTTPException(422, "That syllabus looks empty. Try another file or paste the text.")
-    docs = []
+    docs: dict[str, PrereqDoc] = {}
     if prereq_file is not None:
-        if not prereq_code.strip():
-            raise HTTPException(400, "Say which prerequisite course the second syllabus is for")
-        docs.append(PrereqDoc(code=course_code(prereq_code), text=redact(await _read_syllabus(prereq_file))[:100_000]))
+        doc = _prereq_doc(prereq_code, await _read_syllabus(prereq_file))
+        docs[doc.code] = doc
+    try:
+        listed = json.loads(prereqs) if prereqs.strip() else []
+    except ValueError:
+        listed = None
+    if not isinstance(listed, list) or not all(isinstance(x, dict) for x in listed):
+        raise HTTPException(400, "Couldn't read the list of prerequisite syllabi")
+    uploads = prereq_files or []
+    for item in listed[:MAX_PREREQ_DOCS]:
+        n = item.get("file")
+        if isinstance(n, int) and 0 <= n < len(uploads):
+            doc = _prereq_doc(str(item.get("code", "")), await _read_syllabus(uploads[n]))
+        else:
+            doc = _prereq_doc(str(item.get("code", "")), str(item.get("text", "")))
+        docs[doc.code] = doc
     _allow_build(uid)
     entry = bulletin.lookup(code, live=settings.bulletin_live) if code.strip() else None
     course = Course(owner=uid, code=course_code(code) if code.strip() else "", title=entry.title if entry else "",
-                    syllabus_text=redact(raw)[:150_000], prereq_docs=docs)
+                    syllabus_text=redact(raw)[:150_000], prereq_docs=list(docs.values())[:MAX_PREREQ_DOCS])
     services.catalog.put(course)
     _submit("build", course.id, code)
     return course.public()
 
 
 @app.post("/api/courses/{course_id}/prereq-syllabus")
-async def add_prereq_syllabus(course_id: str, prereq_code: str = Form(...), file: UploadFile = File(...), uid: str = Depends(account_uid)):
-    """Add a prerequisite course's syllabus as evidence, then re-check coverage."""
+async def add_prereq_syllabus(course_id: str, prereq_code: str = Form(...), file: UploadFile | None = File(None),
+                              text: str = Form(""), uid: str = Depends(account_uid)):
+    """Add a listed prerequisite's syllabus (a file or pasted text) as evidence for the class, then re-check coverage.
+    One per prerequisite course; adding another for the same course replaces it."""
     course = _owned(course_id, uid)
-    text = redact(await _read_syllabus(file))[:100_000]
-    code = course_code(prereq_code)
-    course.prereq_docs = [d for d in course.prereq_docs if d.code != code] + [PrereqDoc(code=code, text=text)]
+    if file is None and not text.strip():
+        raise HTTPException(400, "Upload the syllabus file or paste its text")
+    doc = _prereq_doc(prereq_code, await _read_syllabus(file) if file is not None else text)
+    others = [d for d in course.prereq_docs if d.code != doc.code]
+    if len(others) >= MAX_PREREQ_DOCS:
+        raise HTTPException(400, f"A course can keep up to {MAX_PREREQ_DOCS} prerequisite syllabi.")
+    course.prereq_docs = others + [doc]
     course.build.stage = "Re-checking what prerequisites taught"
     services.catalog.put(course)
     _submit("recheck", course.id)
@@ -326,10 +365,13 @@ def course_detail(course_id: str, uid: str = Depends(current_uid)):
     if course.build.status != "ready":
         return out
     snap = _snapshot(course, uid)
+    mine = services.course(course_id).enrollments.get(uid)
     out.update(
         week_now=snap.week_now,
-        enrolled=services.course(course_id).enrollments.get(uid) is not None,
-        enrollment=snap.enrollment.model_dump(mode="json"),
+        enrolled=mine is not None and mine.setup,
+        enrollment={**snap.enrollment.model_dump(mode="json"), "met": bg.effective_met(snap.enrollment, course.groups())},
+        # "A or B" requirements this student hasn't answered: asked before the plan and the quick check
+        choices_needed=bg.unanswered_choices(course, snap.enrollment),
         timeline=timeline(snap),
         concepts=sorted((concept_view(snap, c) for c in snap.concepts.values()),
                         key=lambda v: (v["next_need"] is None, (v["next_need"] or {}).get("date", ""), v["name"])),
@@ -338,8 +380,11 @@ def course_detail(course_id: str, uid: str = Depends(current_uid)):
 
 
 class EnrollmentBody(BaseModel):
-    route: str | None = None
-    prereq_taken: str | None = None  # "" clears it
+    # Listed prerequisite code -> "took" | "elsewhere" | "none" | "unsure". Replaces the earlier answers.
+    met: dict[str, str] | None = Field(default=None, max_length=40)
+    draft: bool = False  # save the answers without finishing setup (the add-course form does this)
+    route: str | None = None  # older clients: one answer for the whole course
+    prereq_taken: str | None = None  # older clients: the one alternative taken; "" clears it
     weekly_minutes: int | None = Field(default=None, ge=15, le=2400)
     self_report: dict[str, str] | None = None
 
@@ -348,8 +393,13 @@ class EnrollmentBody(BaseModel):
 def update_me(course_id: str, body: EnrollmentBody, uid: str = Depends(current_uid)):
     course = _course(course_id)
     repo = services.course(course.id)
-    e = repo.enrollments.get(uid) or Enrollment(id=uid)
-    if body.route in ("took_here", "equivalent", "permission", "unsure"):
+    e = repo.enrollments.get(uid) or Enrollment(id=uid, setup=False)
+    e.setup = e.setup or not body.draft
+    if body.met is not None:
+        e.met = {course_code(code): how for code, how in body.met.items()  # type: ignore[misc]
+                 if code.strip() and how in ("took", "elsewhere", "none", "unsure")}
+        e.route, e.prereq_taken = bg.route_of(e.met), None  # type: ignore[assignment]
+    elif body.route in ("took_here", "equivalent", "permission", "unsure"):
         e.route = body.route  # type: ignore[assignment]
     if body.prereq_taken is not None:
         code = course_code(body.prereq_taken) if body.prereq_taken.strip() else ""
@@ -380,7 +430,11 @@ class CheckBody(BaseModel):
 @app.post("/api/courses/{course_id}/check/next")
 def check_next(course_id: str, body: CheckBody, uid: str = Depends(current_uid)):
     course = _course(course_id)
-    return adaptive_next(_snapshot(course, uid), services.course(course.id), body.session)
+    snap = _snapshot(course, uid)
+    open_choices = bg.unanswered_choices(course, snap.enrollment)
+    if open_choices:
+        raise HTTPException(409, "Before the check, say which of these you took: " + "; ".join(" or ".join(g) for g in open_choices))
+    return adaptive_next(snap, services.course(course.id), body.session)
 
 
 @app.delete("/api/courses/{course_id}/me")
@@ -391,8 +445,67 @@ def delete_me(course_id: str, uid: str = Depends(current_uid)):
     repo.responses.delete_many(mine)
     materials = [m.id for m in repo.materials.list(student=uid)]
     repo.materials.delete_many(materials)
+    earlier = [p.id for p in repo.prior_courses.list(student=uid)]
+    repo.prior_courses.delete_many(earlier)
     repo.enrollments.delete_many([uid])
-    return {"deleted_responses": len(mine), "deleted_materials": len(materials)}
+    return {"deleted_responses": len(mine), "deleted_materials": len(materials), "deleted_courses": len(earlier)}
+
+
+@app.get("/api/courses/{course_id}/background")
+def list_background(course_id: str, uid: str = Depends(current_uid)):
+    """The earlier courses this student added. Only they can see them."""
+    repo = services.course(_course(course_id).id)
+    names = {c.id: c.name for c in repo.concepts.list() if not c.removed}
+    return [bg.view(p, names) for p in sorted(repo.prior_courses.list(student=uid), key=lambda p: p.created_at)]
+
+
+@app.post("/api/courses/{course_id}/background")
+async def add_prior_course(course_id: str, code: str = Form(...), title: str = Form(""), school: str = Form(""),
+                           replaces: str = Form(""), text: str = Form(""), file: UploadFile | None = File(None),
+                           uid: str = Depends(current_uid)):
+    """Add a course you took before, at any school, with its syllabus (a file or pasted text) if you have it.
+    The syllabus is compared with this course's map; while the map is still being built, that happens at the end."""
+    course = _course(course_id)
+    repo = services.course(course.id)
+    name = " ".join(code.split())[:40]
+    if len(name) < 2:
+        raise HTTPException(400, "Name the course you took, for example CSE 206")
+    if len(repo.prior_courses.list(student=uid)) >= bg.MAX_PRIOR_COURSES:
+        raise HTTPException(400, f"You can keep up to {bg.MAX_PRIOR_COURSES} earlier courses per course. Remove one first.")
+    data = await file.read() if file is not None else None
+    if data and len(data) > settings.max_upload_mb * 1024 * 1024:
+        raise HTTPException(413, f"{file.filename} is larger than {settings.max_upload_mb} MB")  # type: ignore[union-attr]
+    given = bool(data) or bool(text.strip())
+    if given:
+        _allow_build(uid, "notes")  # reading and matching spends a few model calls
+    filename = (file.filename or "syllabus") if file is not None else ""
+    try:
+        source, chunks = await run_in_threadpool(bg.read_syllabus, engine, data, filename,
+                                                 guess_mime(filename, file.content_type if file is not None else None), text)
+    except UnsupportedFile as exc:
+        raise HTTPException(415, str(exc)) from exc
+    if given and not chunks:
+        raise HTTPException(422, "No text found in that syllabus. If it's a scan, try a clearer photo or paste the text.")
+    # A bare course number is tidied ("cse206" -> "CSE 206"); anything else is kept as written.
+    tidy = course_code(name) if re.fullmatch(r"[A-Za-z]{2,5}\s*-?\s*\d{3}[A-Za-z]?", name) else name
+    prior = PriorCourse(student=uid, code=tidy, title=" ".join(title.split())[:120], school=" ".join(school.split())[:80],
+                        replaces=course_code(replaces) if replaces.strip() else None, source=source, chunks=chunks)
+    concepts = [c for c in repo.concepts.list() if not c.removed]
+    if course.build.status == "ready" and chunks:
+        await run_in_threadpool(bg.match_prior_course, engine, concepts, prior)
+    repo.prior_courses.put(prior)
+    log.info("prior course %s for %s: %d passages, %d matches", prior.id, course.id, len(prior.chunks), len(prior.matches))
+    return bg.view(prior, {c.id: c.name for c in concepts})
+
+
+@app.delete("/api/courses/{course_id}/background/{prior_id}")
+def delete_prior_course(course_id: str, prior_id: str, uid: str = Depends(current_uid)):
+    repo = services.course(_course(course_id).id)
+    p = repo.prior_courses.get(prior_id)
+    if p is None or p.student != uid:
+        raise HTTPException(404, "Not found")
+    repo.prior_courses.delete_many([p.id])
+    return {"deleted": p.id}
 MAX_MATERIALS = 12
 
 

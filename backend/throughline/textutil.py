@@ -106,6 +106,71 @@ def course_code(text: str) -> str:
     """'ds612' / 'DS-612' / 'ds 612' -> 'DS 612'."""
     match = re.search(r"\b([A-Za-z]{2,5})\s*-?\s*(\d{3}[A-Za-z]?)\b", text or "")
     return f"{match.group(1).upper()} {match.group(2).upper()}" if match else (text or "").strip().upper()
+_ANY_CODE = re.compile(r"\b([A-Za-z]{2,5})[\s\u00a0]*-?[\s\u00a0]*(\d{3}[A-Za-z]?)\b")
+# An "or" that belongs to a phrase ("C or better", "or equivalent"), not a choice between two courses.
+_OR_PHRASE = re.compile(
+    r"\bor\s+(?:an?\s+|the\s+)?(?:equivalen|better|higher|above|consent|permission|concurrent|passing|instructor|graduate|upper|department|waiver)\w*",
+    re.IGNORECASE)
+_JOINER = re.compile(r";|\band\s*/\s*or\b|\band\b|\bor\b|/|,", re.IGNORECASE)
+
+
+def prereq_groups(text: str, codes: list[str]) -> list[list[str]]:
+    """A prerequisite statement as requirements: every group must be met, and the codes in a group are alternatives.
+
+    'DS 212/ECON 212 or equivalent; ISYS 263' -> [['DS 212', 'ECON 212'], ['ISYS 263']]
+    'CSC 220, CSC 230, and MATH 227'          -> [['CSC 220'], ['CSC 230'], ['MATH 227']]
+    Only the given codes count; one the statement doesn't mention becomes its own requirement.
+    """
+    wanted = list(dict.fromkeys(course_code(c) for c in codes if c and c.strip()))
+    text = text or ""
+    found: list[tuple[str, int, int]] = []
+    for m in _ANY_CODE.finditer(text):
+        code = f"{m.group(1).upper()} {m.group(2).upper()}"
+        if code in wanted and all(code != f[0] for f in found):
+            found.append((code, m.start(), m.end()))
+
+    joins = []
+    for (_, _, end), (_, start, _) in zip(found, found[1:]):
+        marks = [m.group(0).lower() for m in _JOINER.finditer(_OR_PHRASE.sub(" ", text[end:start]))]
+        words = [m for m in marks if m not in (",", ";")]
+        if ";" in marks or not marks:
+            joins.append("and")
+        elif words:
+            joins.append("and" if words[-1] == "and" else "or")
+        else:
+            joins.append(",")
+    # A comma takes the meaning of the joiner that ends its list ("A, B or C"), unless a joiner already came
+    # earlier in the same list ("A or B, C or D" is two requirements).
+    resolved, fresh = [], True
+    for i, kind in enumerate(joins):
+        if kind == ",":
+            kind = next((k for k in joins[i + 1:] if k != ","), "and") if fresh else "and"
+        resolved.append(kind)
+        fresh = kind == "and"
+    groups = [[found[0][0]]] if found else []
+    for (code, _, _), kind in zip(found[1:], resolved):
+        if kind == "or":
+            groups[-1].append(code)
+        else:
+            groups.append([code])
+    seen = {c for g in groups for c in g}
+    return groups + [[c] for c in wanted if c not in seen]
+
+
+def tidy_groups(groups: list[list[str]], codes: list[str], text: str = "") -> list[list[str]]:
+    """Clean proposed groups: listed codes only, each once; a listed code left out is placed by the statement's wording."""
+    wanted = list(dict.fromkeys(course_code(c) for c in codes if c and c.strip()))
+    out: list[list[str]] = []
+    seen: set[str] = set()
+    for g in groups:
+        options = [c for c in dict.fromkeys(course_code(x) for x in g if x and x.strip()) if c in wanted and c not in seen]
+        if options:
+            out.append(options)
+            seen.update(options)
+    rest = [c for c in wanted if c not in seen]
+    return out + prereq_groups(text, rest) if rest else out
+
+
 # Syllabi carry instructor contact details. Strip them before text is stored or sent to an AI model.
 
 _EMAIL = re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+")

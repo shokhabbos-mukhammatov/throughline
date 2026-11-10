@@ -16,9 +16,10 @@ from datetime import date, timedelta
 from functools import cached_property
 
 from . import mastery as mx
+from .background import Background, Personal
 from .graph import topological_order
 from .materials import KIND_WORD
-from .models import Concept, Course, Edge, Enrollment, Material, Requirement, Response, Topic
+from .models import Concept, Course, Edge, Enrollment, Material, PriorCourse, Requirement, Response, Topic
 from .repo import CourseRepo
 
 CHECK_MINUTES = 3
@@ -69,6 +70,7 @@ class Snapshot:
     enrollment: Enrollment
     today: date
     materials: list[Material] = field(default_factory=list)  # this student's own notes and slides
+    prior_courses: list[PriorCourse] = field(default_factory=list)  # courses this student took before, any school
 
     @classmethod
     def load(cls, course: Course, repo: CourseRepo, student: str, today: date) -> "Snapshot":
@@ -83,7 +85,15 @@ class Snapshot:
             enrollment=repo.enrollments.get(student) or Enrollment(id=student),
             today=today,
             materials=repo.materials.list(student=student),
+            prior_courses=repo.prior_courses.list(student=student),
         )
+
+    @cached_property
+    def personal(self) -> dict[str, Personal]:
+        """concept id -> coverage for this student, from the courses they took."""
+        background = Background(self.course, self.enrollment, self.prior_courses)
+        return {cid: background.of(c) for cid, c in self.concepts.items()}
+
     @cached_property
     def notes(self) -> dict[str, list[dict]]:
         """concept id -> where this student's own materials cover it, best first."""
@@ -110,7 +120,7 @@ class Snapshot:
     @cached_property
     def model(self) -> mx.KnowledgeModel:
         return mx.KnowledgeModel.build(list(self.concepts.values()), self.edges, self.enrollment, self.responses,
-                                       in_notes=set(self.notes))
+                                       in_notes=set(self.notes), background={cid: p.prior for cid, p in self.personal.items()})
 
     @cached_property
     def states(self) -> dict[str, mx.ConceptState]:
@@ -187,9 +197,7 @@ class Snapshot:
 def concept_view(snap: Snapshot, c: Concept) -> dict:
     s = snap.states[c.id]
     nxt = snap.next_need(c.id)
-    coverage, covered_by = c.coverage, c.covered_by
-    if coverage in ("listed", "likely") and not mx.coverage_applies(c, snap.enrollment):
-        coverage, covered_by = "unknown", None  # taught in an alternative prerequisite, not the one this student took
+    mine = snap.personal[c.id]
     return {
         "id": c.id,
         "name": c.name,
@@ -197,8 +205,9 @@ def concept_view(snap: Snapshot, c: Concept) -> dict:
         "depth": c.depth,
         "foundation": c.foundation,
         "confidence": c.confidence,
-        "covered_by": covered_by,
-        "coverage": coverage,
+        "covered_by": mine.covered_by,
+        "coverage": mine.coverage,
+        "coverage_note": mine.note,
         "hidden": c.hidden,
         "in_your_notes": snap.notes.get(c.id, [])[:3],
         "status": s.status,
@@ -350,7 +359,7 @@ def _plan_item(snap: Snapshot, it: dict, minutes: int, partial: bool) -> dict:
         "foundation_for": need.via,
         "before": it["before"],
         "importance": need.importance,
-        "coverage": c.coverage,
+        "coverage": snap.personal[c.id].coverage,
         "hidden": c.hidden,
         "study": snap.where_to_learn(c),
     }
