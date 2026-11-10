@@ -25,6 +25,7 @@ from .textutil import BM25, course_code, hashed_embedding, rrf, tokens
 
 log = logging.getLogger(__name__)
 
+_OWN_PREREQ = re.compile(r"^\W*(?:pre-?requisites?|co-?requisites?)\b", re.IGNORECASE)
 CHUNK_CHARS = 240  # roughly one schedule row per passage, so quotes point at a specific week
 
 
@@ -70,7 +71,9 @@ def build_corpus(store: Store, course: Course) -> list[Passage]:
         if code != own and (code in listed or not listed):
             add(f"Bulletin: {code} {b.title}", f"{code} {b.title}. {b.description}", "bulletin", code)
     for doc in course.prereq_docs:
-        for chunk in chunk_lines(doc.text):
+        # A syllabus's own prerequisite line says what it requires, not what it teaches.
+        taught = "\n".join(l for l in doc.text.splitlines() if not _OWN_PREREQ.match(l))
+        for chunk in chunk_lines(taught):
             add(f"{course_code(doc.code)} syllabus", chunk, "prereq_syllabus", course_code(doc.code))
     # Prerequisite courses another student already mapped: their timelines say what they covered.
     catalog = Catalog(store)

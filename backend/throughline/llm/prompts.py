@@ -79,6 +79,7 @@ For each entry:
 - verdict "teaches": a passage clearly covers the concept at the depth needed.
 - verdict "partial": a passage covers it more shallowly, or only a closely related idea.
 - verdict "unrelated": no passage covers it. Do not use outside knowledge about what such courses usually teach.
+- A passage that lists what a course requires before it (its own prerequisites) does not show that the course teaches that.
 - passage: the label you relied on (null for "unrelated"). quote: copy the exact words from that passage, at most 25."""
 
 WRITE_PACKS = """You write study material that helps a university student get ready for an upcoming class session.

@@ -549,6 +549,7 @@ export const api = {
     req<{ applied: number; skipped: string[]; revision: RevisionView }>(`/api/courses/${id}/revisions/${rid}/apply`,
       { method: "POST", body: json({ change_ids: changeIds }) }),
   discardRevision: (id: string, rid: string) => req<RevisionView>(`/api/courses/${id}/revisions/${rid}/discard`, { method: "POST" }),
+  recheck: (id: string) => req<CoursePublic>(`/api/courses/${id}/recheck`, { method: "POST" }),
   rebuild: (id: string) => req<CoursePublic>(`/api/courses/${id}/rebuild`, { method: "POST" }),
   classView: (id: string, includeSimulated: boolean) => req<ClassView>(`/api/courses/${id}/class?include_simulated=${includeSimulated}`),
 };

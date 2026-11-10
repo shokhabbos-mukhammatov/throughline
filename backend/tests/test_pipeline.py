@@ -102,6 +102,8 @@ def test_redaction():
     out = redact(text)
     assert "jdoe@" not in out and "338-6299" not in out and "Jane" not in out and "Alaoui" not in out
     assert "instructure" not in out and "[email]" in out
+    contact = redact("Instructor Contact\nName: Jordan Q Example\nOffice: BUS 300\nFull name - Sam Doe  Email: sdoe@sfsu.edu")
+    assert "Jordan" not in contact and "Sam Doe" not in contact and "BUS 300" in contact and "Name: [name]" in contact
 
 
 def test_bulletin_parser_reads_courseleaf_blocks():

@@ -496,6 +496,12 @@ async def add_prior_course(course_id: str, code: str = Form(...), title: str = F
         await run_in_threadpool(bg.match_prior_course, engine, concepts, prior)
     repo.prior_courses.put(prior)
     log.info("prior course %s for %s: %d passages, %d matches", prior.id, course.id, len(prior.chunks), len(prior.matches))
+    listed = {course_code(c) for c in course.official_prereqs}
+    if uid == course.owner and chunks and not prior.school and course_code(prior.code) in listed and course.build.status == "ready":
+        # the owner's copy of a listed prerequisite's syllabus is evidence for the whole class: re-check with it
+        course.build.stage = "Re-checking what prerequisites taught"
+        services.catalog.put(course)
+        _submit("recheck", course.id)
     return bg.view(prior, {c.id: c.name for c in concepts})
 
 
@@ -781,6 +787,19 @@ def discard_revision(course_id: str, revision_id: str, uid: str = Depends(curren
     r.status = "discarded"
     services.course(course.id).revisions.put(r)
     return _revision_view(course.id, r)
+
+
+@app.post("/api/courses/{course_id}/recheck")
+def recheck(course_id: str, uid: str = Depends(account_uid)):
+    """Re-read the prerequisites (syllabus and Bulletin) and re-check what each one taught. Keeps the map and answers."""
+    course = _owned(course_id, uid)
+    if course.build.status != "ready":
+        raise HTTPException(409, "Wait until the map is ready.")
+    _allow_build(uid, "notes")
+    course.build.stage = "Re-checking what prerequisites taught"
+    services.catalog.put(course)
+    _submit("recheck", course.id)
+    return course.public()
 
 
 @app.post("/api/courses/{course_id}/rebuild")
